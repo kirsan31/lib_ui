@@ -8,24 +8,21 @@
 
 #include "ui/ui_log.h"
 #include "base/platform/base_platform_info.h"
-#include "base/platform/linux/base_xcb_utilities_linux.h"
+#include "base/platform/linux/base_linux_gtk_integration.h"
 #include "ui/platform/linux/ui_linux_wayland_integration.h"
 #include "base/const_string.h"
 #include "base/qt_adapters.h"
 #include "base/flat_set.h"
+
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
+#include "base/platform/linux/base_linux_xcb_utilities.h"
+#endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 
 #include <QtCore/QPoint>
 #include <QtGui/QScreen>
 #include <QtGui/QWindow>
 #include <QtWidgets/QApplication>
 #include <qpa/qplatformnativeinterface.h>
-
-#ifndef DESKTOP_APP_DISABLE_DBUS_INTEGRATION
-#include <QtDBus/QDBusConnection>
-#include <QtDBus/QDBusMessage>
-#include <QtDBus/QDBusReply>
-#include <QtDBus/QDBusVariant>
-#endif // !DESKTOP_APP_DISABLE_DBUS_INTEGRATION
 
 Q_DECLARE_METATYPE(QMargins);
 
@@ -39,6 +36,7 @@ constexpr auto kXDGDesktopPortalService = "org.freedesktop.portal.Desktop"_cs;
 constexpr auto kXDGDesktopPortalObjectPath = "/org/freedesktop/portal/desktop"_cs;
 constexpr auto kSettingsPortalInterface = "org.freedesktop.portal.Settings"_cs;
 
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 bool SetXCBFrameExtents(QWindow *window, const QMargins &extents) {
 	const auto connection = base::Platform::XCB::GetConnectionFromQt();
 	if (!connection) {
@@ -139,6 +137,7 @@ bool ShowXCBWindowMenu(QWindow *window) {
 
 	return true;
 }
+#endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 
 TitleControls::Control GtkKeywordToTitleControl(const QString &keyword) {
 	if (keyword == qstr("minimize")) {
@@ -152,56 +151,6 @@ TitleControls::Control GtkKeywordToTitleControl(const QString &keyword) {
 	return TitleControls::Control::Unknown;
 }
 
-#ifndef DESKTOP_APP_DISABLE_DBUS_INTEGRATION
-std::optional<TitleControls::Layout> PortalTitleControlsLayout() {
-	auto message = QDBusMessage::createMethodCall(
-		kXDGDesktopPortalService.utf16(),
-		kXDGDesktopPortalObjectPath.utf16(),
-		kSettingsPortalInterface.utf16(),
-		"Read");
-
-	message.setArguments({
-		"org.gnome.desktop.wm.preferences",
-		"button-layout"
-	});
-
-	const QDBusReply<QVariant> reply = QDBusConnection::sessionBus().call(
-		message);
-
-	if (!reply.isValid() || !reply.value().canConvert<QDBusVariant>()) {
-		return std::nullopt;
-	}
-
-	const auto valueVariant = qvariant_cast<QDBusVariant>(
-		reply.value()).variant();
-
-	if (!valueVariant.canConvert<QString>()) {
-		return std::nullopt;
-	}
-
-	const auto valueBySides = valueVariant.toString().split(':');
-
-	std::vector<TitleControls::Control> controlsLeft;
-	ranges::transform(
-		valueBySides[0].split(','),
-		ranges::back_inserter(controlsLeft),
-		GtkKeywordToTitleControl);
-
-	std::vector<TitleControls::Control> controlsRight;
-	if (valueBySides.size() > 1) {
-		ranges::transform(
-			valueBySides[1].split(','),
-			ranges::back_inserter(controlsRight),
-			GtkKeywordToTitleControl);
-	}
-
-	return TitleControls::Layout{
-		.left = controlsLeft,
-		.right = controlsRight
-	};
-}
-#endif // !DESKTOP_APP_DISABLE_DBUS_INTEGRATION
-
 } // namespace
 
 bool IsApplicationActive() {
@@ -212,23 +161,27 @@ bool TranslucentWindowsSupported(QPoint globalPosition) {
 	if (::Platform::IsWayland()) {
 		return true;
 	}
-	if (const auto native = QGuiApplication::platformNativeInterface()) {
-		if (const auto desktop = QApplication::desktop()) {
-			if (const auto screen = base::QScreenNearestTo(globalPosition)) {
-				if (native->nativeResourceForScreen(QByteArray("compositingEnabled"), screen)) {
-					return true;
+
+	if (::Platform::IsX11()) {
+		if (const auto native = QGuiApplication::platformNativeInterface()) {
+			if (const auto desktop = QApplication::desktop()) {
+				if (const auto screen = base::QScreenNearestTo(globalPosition)) {
+					if (native->nativeResourceForScreen(QByteArray("compositingEnabled"), screen)) {
+						return true;
+					}
+					const auto index = QGuiApplication::screens().indexOf(screen);
+					static auto WarnedAbout = base::flat_set<int>();
+					if (!WarnedAbout.contains(index)) {
+						WarnedAbout.emplace(index);
+						UI_LOG(("WARNING: Compositing is disabled for screen index %1 (for position %2,%3)").arg(index).arg(globalPosition.x()).arg(globalPosition.y()));
+					}
+				} else {
+					UI_LOG(("WARNING: Could not get screen for position %1,%2").arg(globalPosition.x()).arg(globalPosition.y()));
 				}
-				const auto index = QGuiApplication::screens().indexOf(screen);
-				static auto WarnedAbout = base::flat_set<int>();
-				if (!WarnedAbout.contains(index)) {
-					WarnedAbout.emplace(index);
-					UI_LOG(("WARNING: Compositing is disabled for screen index %1 (for position %2,%3)").arg(index).arg(globalPosition.x()).arg(globalPosition.y()));
-				}
-			} else {
-				UI_LOG(("WARNING: Could not get screen for position %1,%2").arg(globalPosition.x()).arg(globalPosition.y()));
 			}
 		}
 	}
+
 	return false;
 }
 
@@ -242,11 +195,13 @@ bool WindowExtentsSupported() {
 	}
 #endif // DESKTOP_APP_QT_PATCHED
 
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 	namespace XCB = base::Platform::XCB;
-	if (!::Platform::IsWayland()
+	if (::Platform::IsX11()
 		&& XCB::IsSupportedByWM(kXCBFrameExtentsAtomName.utf16())) {
 		return true;
 	}
+#endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 
 	return false;
 }
@@ -259,9 +214,15 @@ bool SetWindowExtents(QWindow *window, const QMargins &extents) {
 #else // DESKTOP_APP_QT_PATCHED
 		return false;
 #endif // !DESKTOP_APP_QT_PATCHED
-	} else {
+	} else if (::Platform::IsX11()) {
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 		return SetXCBFrameExtents(window, extents);
+#else // !DESKTOP_APP_DISABLE_X11_INTEGRATION
+		return false;
+#endif // DESKTOP_APP_DISABLE_X11_INTEGRATION
 	}
+
+	return false;
 }
 
 bool UnsetWindowExtents(QWindow *window) {
@@ -272,26 +233,82 @@ bool UnsetWindowExtents(QWindow *window) {
 #else // DESKTOP_APP_QT_PATCHED
 		return false;
 #endif // !DESKTOP_APP_QT_PATCHED
-	} else {
+	} else if (::Platform::IsX11()) {
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 		return UnsetXCBFrameExtents(window);
+#else // !DESKTOP_APP_DISABLE_X11_INTEGRATION
+		return false;
+#endif // DESKTOP_APP_DISABLE_X11_INTEGRATION
 	}
+
+	return false;
 }
 
 bool ShowWindowMenu(QWindow *window) {
 	if (const auto integration = WaylandIntegration::Instance()) {
 		return integration->showWindowMenu(window);
-	} else {
+	} else if (Platform::IsX11()) {
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 		return ShowXCBWindowMenu(window);
+#else // !DESKTOP_APP_DISABLE_X11_INTEGRATION
+		return false;
+#endif // DESKTOP_APP_DISABLE_X11_INTEGRATION
 	}
+
+	return false;
 }
 
 TitleControls::Layout TitleControlsLayout() {
-#ifndef DESKTOP_APP_DISABLE_DBUS_INTEGRATION
-	if (const auto portalLayout = PortalTitleControlsLayout()) {
-		return *portalLayout;
-	}
-#endif // !DESKTOP_APP_DISABLE_DBUS_INTEGRATION
+	const auto gtkResult = []() -> std::optional<TitleControls::Layout> {
+		const auto integration = base::Platform::GtkIntegration::Instance();
+		if (!integration || !integration->checkVersion(3, 12, 0)) {
+			return std::nullopt;
+		}
 
+		const auto decorationLayoutSetting = integration->getStringSetting(
+			"gtk-decoration-layout");
+		
+		if (!decorationLayoutSetting.has_value()) {
+			return std::nullopt;
+		}
+
+		const auto decorationLayout = decorationLayoutSetting->split(':');
+
+		std::vector<TitleControls::Control> controlsLeft;
+		ranges::transform(
+			decorationLayout[0].split(','),
+			ranges::back_inserter(controlsLeft),
+			GtkKeywordToTitleControl);
+
+		std::vector<TitleControls::Control> controlsRight;
+		if (decorationLayout.size() > 1) {
+			ranges::transform(
+				decorationLayout[1].split(','),
+				ranges::back_inserter(controlsRight),
+				GtkKeywordToTitleControl);
+		}
+
+		return TitleControls::Layout{
+			.left = controlsLeft,
+			.right = controlsRight
+		};
+	}();
+
+	if (gtkResult.has_value()) {
+		return *gtkResult;
+	}
+
+#ifdef __HAIKU__
+	return TitleControls::Layout{
+		.left = {
+			TitleControls::Control::Close,
+		},
+		.right = {
+			TitleControls::Control::Minimize,
+			TitleControls::Control::Maximize,
+		}
+	};
+#else // __HAIKU__
 	return TitleControls::Layout{
 		.right = {
 			TitleControls::Control::Minimize,
@@ -299,6 +316,7 @@ TitleControls::Layout TitleControlsLayout() {
 			TitleControls::Control::Close,
 		}
 	};
+#endif // !__HAIKU__
 }
 
 } // namespace Platform
