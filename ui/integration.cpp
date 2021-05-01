@@ -36,10 +36,8 @@ void Integration::textActionsUpdated() {
 void Integration::activationFromTopPanel() {
 }
 
-void Integration::startFontsBegin() {
-}
-
-void Integration::startFontsEnd() {
+bool Integration::screenIsLocked() {
+	return false;
 }
 
 QString Integration::timeFormat() {
