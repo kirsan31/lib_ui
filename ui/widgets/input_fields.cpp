@@ -10,7 +10,8 @@
 #include "ui/text/text.h"
 #include "ui/emoji_config.h"
 #include "ui/ui_utility.h"
-#include "base/openssl_help.h"
+#include "base/invoke_queued.h"
+#include "base/random.h"
 #include "base/platform/base_platform_info.h"
 #include "emoji_suggestions_helper.h"
 #include "styles/palette.h"
@@ -1772,12 +1773,12 @@ void InputField::focusInEvent(QFocusEvent *e) {
 	_borderAnimationStart = (e->reason() == Qt::MouseFocusReason)
 		? mapFromGlobal(QCursor::pos()).x()
 		: (width() / 2);
-	QTimer::singleShot(0, this, SLOT(onFocusInner()));
+	InvokeQueued(this, [=] { onFocusInner(); });
 }
 
 void InputField::mousePressEvent(QMouseEvent *e) {
 	_borderAnimationStart = e->pos().x();
-	QTimer::singleShot(0, this, SLOT(onFocusInner()));
+	InvokeQueued(this, [=] { onFocusInner(); });
 }
 
 void InputField::onFocusInner() {
@@ -3123,7 +3124,7 @@ void InputField::commitInstantReplacement(
 	format.setProperty(kInstantReplaceWithId, replacement);
 	format.setProperty(
 		kInstantReplaceRandomId,
-		openssl::RandomValue<uint32>());
+		base::RandomValue<uint32>());
 	ApplyTagFormat(format, cursor.charFormat());
 	cursor.insertText(replacement, format);
 }
