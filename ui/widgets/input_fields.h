@@ -26,6 +26,7 @@ const auto kClearFormatSequence = QKeySequence("ctrl+shift+n");
 const auto kStrikeOutSequence = QKeySequence("ctrl+shift+x");
 const auto kMonospaceSequence = QKeySequence("ctrl+shift+m");
 const auto kEditLinkSequence = QKeySequence("ctrl+k");
+const auto kSpoilerSequence = QKeySequence("ctrl+shift+p");
 
 class PopupMenu;
 
@@ -137,6 +138,9 @@ private:
 	QTimer _touchTimer;
 	bool _touchPress, _touchRightButton, _touchMove;
 	QPoint _touchStart;
+
+	base::unique_qptr<PopupMenu> _contextMenu;
+
 };
 
 class InputField : public RpWidget {
@@ -168,6 +172,7 @@ public:
 	static const QString kTagStrikeOut;
 	static const QString kTagCode;
 	static const QString kTagPre;
+	static const QString kTagSpoiler;
 
 	InputField(
 		QWidget *parent,
@@ -696,6 +701,9 @@ private:
 	bool _touchRightButton = false;
 	bool _touchMove = false;
 	QPoint _touchStart;
+
+	base::unique_qptr<PopupMenu> _contextMenu;
+
 };
 
 class PasswordInput : public MaskedInputField {
