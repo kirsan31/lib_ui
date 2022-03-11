@@ -38,6 +38,7 @@ PRIVATE
 
     ui/effects/animation_value.cpp
     ui/effects/animation_value.h
+    ui/effects/animation_value_f.h
     ui/effects/animations.cpp
     ui/effects/animations.h
     ui/effects/cross_animation.cpp
@@ -85,6 +86,7 @@ PRIVATE
     ui/layers/layer_manager.h
     ui/layers/layer_widget.cpp
     ui/layers/layer_widget.h
+    ui/layers/show.h
     ui/paint/arcs.cpp
     ui/paint/arcs.h
     ui/paint/blob.cpp
@@ -148,6 +150,8 @@ PRIVATE
     ui/text/text_isolated_emoji.h
     ui/text/text_utilities.cpp
     ui/text/text_utilities.h
+    ui/text/text_variant.cpp
+    ui/text/text_variant.h
     ui/toast/toast.cpp
     ui/toast/toast.h
     ui/toast/toast_manager.cpp
@@ -274,4 +278,5 @@ PUBLIC
     desktop-app::lib_base
 PRIVATE
     desktop-app::external_zlib
+    desktop-app::external_jpeg
 )

@@ -386,7 +386,7 @@ CrossAnimation {
 	fg: color;
 	size: pixels;
 	skip: pixels;
-	stroke: pixels;
+	stroke: double;
 	minScale: double;
 }
 
@@ -520,11 +520,12 @@ SettingsButton {
 	textBg: color;
 	textBgOver: color;
 
-	font: font;
+	style: TextStyle;
 	rightLabel: FlatLabel;
 
 	height: pixels;
 	padding: margins;
+	iconLeft: pixels;
 
 	toggle: Toggle;
 	toggleOver: Toggle;
@@ -878,7 +879,7 @@ defaultPopupMenu: PopupMenu {
 defaultInputField: InputField {
 	textBg: windowBg;
 	textFg: windowFg;
-	textMargins: margins(0px, 26px, 0px, 4px);
+	textMargins: margins(0px, 28px, 0px, 4px);
 	textAlign: align(topleft);
 
 	placeholderFg: windowSubTextFg;
@@ -901,7 +902,7 @@ defaultInputField: InputField {
 	font: boxTextFont;
 	menu: defaultPopupMenu;
 
-	heightMin: 52px;
+	heightMin: 55px;
 	heightMax: 148px;
 }
 
@@ -922,7 +923,7 @@ defaultMultiSelectItem: MultiSelectItem {
 	deleteCross: CrossAnimation {
 		size: 32px;
 		skip: 10px;
-		stroke: 2px;
+		stroke: 1.5;
 		minScale: 0.3;
 	}
 	duration: 150;
@@ -958,7 +959,7 @@ defaultMultiSelectSearchCancel: CrossButton {
 	cross: CrossAnimation {
 		size: 36px;
 		skip: 12px;
-		stroke: 2px;
+		stroke: 1.5;
 		minScale: 0.3;
 	}
 	crossFg: boxTitleCloseFg;
@@ -1004,6 +1005,7 @@ SettingsSlider {
 	barTop: pixels;
 	barSkip: pixels;
 	barStroke: pixels;
+	barRadius: pixels;
 	barFg: color;
 	barFgActive: color;
 	labelTop: pixels;
@@ -1022,6 +1024,7 @@ defaultSettingsSlider: SettingsSlider {
 	barTop: 5px;
 	barSkip: 3px;
 	barStroke: 3px;
+	barRadius: 1px;
 	barFg: sliderBgInactive;
 	barFgActive: sliderBgActive;
 	labelTop: 17px;
@@ -1319,6 +1322,7 @@ InfoTopBar {
 	searchRow: SearchFieldRow;
 	highlightBg: color;
 	highlightDuration: int;
+	radius: pixels;
 }
 
 LevelMeter {
@@ -1389,7 +1393,7 @@ defaultSettingsButton: SettingsButton {
 	textBg: windowBg;
 	textBgOver: windowBgOver;
 
-	font: boxTextFont;
+	style: boxTextStyle;
 	rightLabel: defaultSettingsRightLabel;
 
 	height: 20px;

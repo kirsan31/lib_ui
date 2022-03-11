@@ -11,12 +11,17 @@
 #include "ui/wrap/padding_wrap.h"
 #include "ui/widgets/labels.h"
 #include "ui/layers/layer_widget.h"
+#include "ui/layers/show.h"
 #include "ui/effects/animation_value.h"
 #include "ui/text/text_entity.h"
 #include "ui/rp_widget.h"
 
 enum class RectPart;
 using RectParts = base::flags<RectPart>;
+
+namespace base {
+class Timer;
+} // namespace base
 
 namespace style {
 struct RoundButton;
@@ -79,6 +84,7 @@ public:
 	virtual void setNoContentMargin(bool noContentMargin) = 0;
 	virtual bool isBoxShown() const = 0;
 	virtual void closeBox() = 0;
+	virtual void hideLayer() = 0;
 	virtual void triggerButton(int index) = 0;
 
 	template <typename BoxType>
@@ -96,7 +102,6 @@ public:
 };
 
 class BoxContent : public RpWidget {
-	Q_OBJECT
 
 public:
 	BoxContent() {
@@ -210,8 +215,7 @@ public:
 
 	void scrollByDraggingDelta(int delta);
 
-public Q_SLOTS:
-	void onScrollToY(int top, int bottom = -1);
+	void scrollToY(int top, int bottom = -1);
 
 protected:
 	virtual void prepare() = 0;
@@ -273,12 +277,6 @@ protected:
 	void paintEvent(QPaintEvent *e) override;
 	void keyPressEvent(QKeyEvent *e) override;
 
-private Q_SLOTS:
-	void onScroll();
-	void onInnerResize();
-
-	void onDraggingScrollTimer();
-
 private:
 	void finishPrepare();
 	void finishScrollCreate();
@@ -288,6 +286,8 @@ private:
 	void updateInnerVisibleTopBottom();
 	void updateShadowsVisibility();
 	object_ptr<TWidget> doTakeInnerWidget();
+
+	void draggingScrollTimerCallback();
 
 	BoxContentDelegate *_delegate = nullptr;
 
@@ -300,7 +300,7 @@ private:
 	object_ptr<FadeShadow> _topShadow = { nullptr };
 	object_ptr<FadeShadow> _bottomShadow = { nullptr };
 
-	object_ptr<QTimer> _draggingScrollTimer = { nullptr };
+	std::unique_ptr<base::Timer> _draggingScrollTimer;
 	int _draggingScrollDelta = 0;
 
 	rpl::event_stream<> _boxClosingStream;
@@ -362,6 +362,22 @@ private:
 
 	QPointer<BoxContent> _value;
 
+};
+
+class BoxShow : public Show {
+public:
+	explicit BoxShow(not_null<Ui::BoxContent*> box);
+	~BoxShow();
+	void showBox(
+		object_ptr<BoxContent> content,
+		LayerOptions options = LayerOption::KeepOther) const override;
+	void hideLayer() const override;
+	[[nodiscard]] not_null<QWidget*> toastParent() const override;
+	[[nodiscard]] bool valid() const override;
+	operator bool() const override;
+private:
+	mutable QPointer<QWidget> _toastParent;
+	const QPointer<Ui::BoxContent> _weak;
 };
 
 } // namespace Ui
