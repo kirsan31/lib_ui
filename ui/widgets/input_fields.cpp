@@ -2757,6 +2757,7 @@ void InputField::keyPressEventInner(QKeyEvent *e) {
 			? (~Qt::ControlModifier)
 			: (enter && shift)
 			? (~Qt::ShiftModifier)
+			// Qt bug workaround https://bugreports.qt.io/browse/QTBUG-49771
 			: (backspace && Platform::IsLinux())
 			? (Qt::ControlModifier)
 			: oldModifiers;
