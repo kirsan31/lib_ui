@@ -1488,10 +1488,9 @@ void InputField::setTagMimeProcessor(
 }
 
 void InputField::setAdditionalMargin(int margin) {
-	_inner->setStyleSheet(
-		QString::fromLatin1("QTextEdit { margin: %1px; }").arg(margin));
 	_additionalMargin = margin;
-	checkContentHeight();
+	QResizeEvent e(size(), size());
+	QCoreApplication::sendEvent(this, &e);
 }
 
 void InputField::setMaxLength(int length) {
@@ -2758,7 +2757,7 @@ void InputField::keyPressEventInner(QKeyEvent *e) {
 			: (enter && shift)
 			? (~Qt::ShiftModifier)
 			// Qt bug workaround https://bugreports.qt.io/browse/QTBUG-49771
-			: (backspace && Platform::IsLinux())
+			: (backspace && Platform::IsX11())
 			? (Qt::ControlModifier)
 			: oldModifiers;
 		const auto changeModifiers = (oldModifiers & ~allowedModifiers) != 0;
@@ -3307,8 +3306,16 @@ void InputField::removeMarkdownTag(
 	auto tags = TagList();
 	for (const auto &existing : current.tags) {
 		const auto id = TextUtilities::TagWithRemoved(existing.id, tag);
-		if (!id.isEmpty()) {
-			tags.push_back({ existing.offset, existing.length, id });
+		const auto additional = (tag == kTagPre)
+			? kTagCode
+			: (tag == kTagCode)
+			? kTagPre
+			: QString();
+		const auto use = additional.isEmpty()
+			? id
+			: TextUtilities::TagWithRemoved(id, additional);
+		if (!use.isEmpty()) {
+			tags.push_back({ existing.offset, existing.length, use });
 		}
 	}
 
@@ -3667,7 +3674,7 @@ void InputField::insertFromMimeDataInner(const QMimeData *source) {
 
 void InputField::resizeEvent(QResizeEvent *e) {
 	refreshPlaceholder(_placeholderFull.current());
-	_inner->setGeometry(rect().marginsRemoved(_st.textMargins));
+	_inner->setGeometry(rect().marginsRemoved(_st.textMargins + _additionalMargin));
 	_borderAnimationStart = width() / 2;
 	RpWidget::resizeEvent(e);
 	checkContentHeight();

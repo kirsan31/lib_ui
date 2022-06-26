@@ -28,7 +28,6 @@ namespace {
 
 constexpr auto kStringLinkIndexShift = uint16(0x8000);
 constexpr auto kMaxDiacAfterSymbol = 2;
-constexpr auto kSelectedSpoilerOpacity = 0.5;
 
 inline bool IsMono(int32 flags) {
 	return (flags & TextBlockFPre) || (flags & TextBlockFCode);
@@ -141,6 +140,32 @@ bool IsBad(QChar ch) {
 
 		// qt harfbuzz crash see https://github.com/telegramdesktop/tdesktop/issues/4551
 		|| (Platform::IsMac() && ch == 6158);
+}
+
+void InitTextItemWithScriptItem(QTextItemInt &ti, const QScriptItem &si) {
+	// explicitly initialize flags so that initFontAttributes can be called
+	// multiple times on the same TextItem
+	ti.flags = { };
+	if (si.analysis.bidiLevel %2)
+		ti.flags |= QTextItem::RightToLeft;
+	ti.ascent = si.ascent;
+	ti.descent = si.descent;
+
+	if (ti.charFormat.hasProperty(QTextFormat::TextUnderlineStyle)) {
+		ti.underlineStyle = ti.charFormat.underlineStyle();
+	} else if (ti.charFormat.boolProperty(QTextFormat::FontUnderline)
+				|| ti.f->underline()) {
+		ti.underlineStyle = QTextCharFormat::SingleUnderline;
+	}
+
+	// compat
+	if (ti.underlineStyle == QTextCharFormat::SingleUnderline)
+		ti.flags |= QTextItem::Underline;
+
+	if (ti.f->overline() || ti.charFormat.fontOverline())
+		ti.flags |= QTextItem::Overline;
+	if (ti.f->strikeOut() || ti.charFormat.fontStrikeOut())
+		ti.flags |= QTextItem::StrikeOut;
 }
 
 } // namespace
@@ -1707,14 +1732,16 @@ private:
 				}
 				return false;
 			} else if (_p) {
-				QTextCharFormat format;
-				QTextItemInt gf(glyphs.mid(glyphsStart, glyphsEnd - glyphsStart),
-								&_e->fnt, engine.layoutData->string.unicode() + itemStart,
-								itemEnd - itemStart, engine.fontEngine(si), format);
+				QTextItemInt gf;
+				gf.glyphs = glyphs.mid(glyphsStart, glyphsEnd - glyphsStart);
+				gf.f = &_e->fnt;
+				gf.chars = engine.layoutData->string.unicode() + itemStart;
+				gf.num_chars = itemEnd - itemStart;
+				gf.fontEngine = engine.fontEngine(si);
 				gf.logClusters = logClusters + itemStart - si.position;
 				gf.width = itemWidth;
 				gf.justified = false;
-				gf.initWithScriptItem(si);
+				InitTextItemWithScriptItem(gf, si);
 
 				auto hasSelected = false;
 				auto hasNotSelected = true;

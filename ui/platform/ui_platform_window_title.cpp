@@ -167,12 +167,9 @@ void TitleControls::init(Fn<void(bool maximized)> maximize) {
 	});
 	_close->setPointerCursor(false);
 
-	parent()->widthValue(
-	) | rpl::start_with_next([=](int width) {
-		updateControlsPosition();
-	}, _close->lifetime());
-
-	TitleControlsLayoutChanged(
+	rpl::combine(
+		parent()->widthValue(),
+		TitleControlsLayoutValue()
 	) | rpl::start_with_next([=] {
 		updateControlsPosition();
 	}, _close->lifetime());
@@ -417,6 +414,10 @@ not_null<const style::WindowTitle*> DefaultTitleWidget::st() const {
 	return _controls.st();
 }
 
+QRect DefaultTitleWidget::controlsGeometry() const {
+	return _controls.geometry();
+}
+
 void DefaultTitleWidget::setText(const QString &text) {
 	window()->setWindowTitle(text);
 }
@@ -445,7 +446,7 @@ void DefaultTitleWidget::mousePressEvent(QMouseEvent *e) {
 	if (e->button() == Qt::LeftButton) {
 		_mousePressed = true;
 	} else if (e->button() == Qt::RightButton) {
-		ShowWindowMenu(window()->windowHandle());
+		ShowWindowMenu(window(), e->windowPos().toPoint());
 	}
 }
 

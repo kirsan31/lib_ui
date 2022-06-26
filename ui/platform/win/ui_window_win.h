@@ -52,8 +52,6 @@ private:
 	void updateMargins();
 	void updateWindowFrameColors();
 	void updateWindowFrameColors(bool active);
-	void updateSystemMenu();
-	void updateSystemMenu(Qt::WindowState state);
 	void initialShadowUpdate();
 	void updateCornersRounding();
 	void fixMaximizedWindow();
@@ -81,8 +79,8 @@ private:
 	rpl::event_stream<HitTestResult> _systemButtonOver;
 	rpl::event_stream<HitTestResult> _systemButtonDown;
 	std::optional<WindowShadow> _shadow;
+	rpl::variable<uint> _dpi;
 	QMargins _marginsDelta;
-	HMENU _menu = nullptr;
 	bool _updatingMargins = false;
 	bool _isFullScreen = false;
 

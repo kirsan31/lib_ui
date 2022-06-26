@@ -132,7 +132,7 @@ private:
 
 };
 
-class Checkbox : public RippleButton {
+class Checkbox : public RippleButton, public ClickHandlerHost {
 public:
 	Checkbox(
 		QWidget *parent,
@@ -180,6 +180,12 @@ public:
 	void setAllowTextLines(int lines = 0);
 	void setTextBreakEverywhere(bool allow = true);
 
+	void setLink(uint16 lnkIndex, const ClickHandlerPtr &lnk);
+	void setLinksTrusted();
+
+	using ClickHandlerFilter = Fn<bool(const ClickHandlerPtr&, Qt::MouseButton)>;
+	void setClickHandlerFilter(ClickHandlerFilter &&filter);
+
 	bool checked() const;
 	rpl::producer<bool> checkedChanges() const;
 	rpl::producer<bool> checkedValue() const;
@@ -210,6 +216,11 @@ public:
 protected:
 	void paintEvent(QPaintEvent *e) override;
 
+	void mousePressEvent(QMouseEvent *e) override;
+	void mouseMoveEvent(QMouseEvent *e) override;
+	void mouseReleaseEvent(QMouseEvent *e) override;
+	void leaveEventHook(QEvent *e) override;
+
 	void onStateChanged(State was, StateChangeSource source) override;
 	int resizeGetHeight(int newWidth) override;
 
@@ -222,11 +233,15 @@ private:
 	void resizeToText();
 	QPixmap grabCheckCache() const;
 	int countTextMinWidth() const;
+	Text::StateResult getTextState(const QPoint &m) const;
 
 	const style::Checkbox &_st;
 	std::unique_ptr<AbstractCheckView> _check;
 	rpl::event_stream<bool> _checkedChanges;
+	ClickHandlerPtr _activatingHandler;
 	QPixmap _checkCache;
+
+	ClickHandlerFilter _clickHandlerFilter;
 
 	style::align _checkAlignment = style::al_left;
 	Text::String _text;
