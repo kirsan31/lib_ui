@@ -259,7 +259,9 @@ void PopupMenu::init() {
 	setAttribute(Qt::WA_TranslucentBackground, true);
 }
 
-not_null<PopupMenu*> PopupMenu::ensureSubmenu(not_null<QAction*> action) {
+not_null<PopupMenu*> PopupMenu::ensureSubmenu(
+		not_null<QAction*> action,
+		const style::PopupMenu &st) {
 	const auto &list = actions();
 	const auto i = ranges::find(list, action);
 	Assert(i != end(list));
@@ -270,7 +272,7 @@ not_null<PopupMenu*> PopupMenu::ensureSubmenu(not_null<QAction*> action) {
 	}
 	const auto result = _submenus.emplace(
 		action,
-		base::make_unique_q<PopupMenu>(parentWidget(), st())
+		base::make_unique_q<PopupMenu>(parentWidget(), st)
 	).first->second.get();
 	result->deleteOnHide(false);
 	return result;
@@ -300,6 +302,13 @@ void PopupMenu::handleCompositingUpdate() {
 	_padding = _useTransparency
 		? _st.shadow.extend
 		: style::margins(line, line, line, line);
+	if (windowHandle()) {
+		if (_useTransparency) {
+			Platform::SetWindowExtents(this, _padding);
+		} else {
+			Platform::UnsetWindowExtents(this);
+		}
+	}
 	_scroll->moveToLeft(_padding.left(), _padding.top());
 	handleMenuResize();
 	updateRoundingOverlay();
@@ -622,12 +631,12 @@ void PopupMenu::hideAnimated() {
 void PopupMenu::hideFast() {
 	if (isHidden()) return;
 
-	_hiding = false;
 	_a_opacity.stop();
 	hideFinished();
 }
 
 void PopupMenu::hideFinished() {
+	_hiding = false;
 	_a_show.stop();
 	_cache = QPixmap();
 	if (!isHidden()) {
@@ -714,7 +723,6 @@ void PopupMenu::opacityAnimationCallback() {
 	update();
 	if (!_a_opacity.animating()) {
 		if (_hiding) {
-			_hiding = false;
 			hideFinished();
 		} else {
 			showChildren();
