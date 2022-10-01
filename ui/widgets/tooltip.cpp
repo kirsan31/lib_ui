@@ -7,10 +7,11 @@
 #include "ui/widgets/tooltip.h"
 
 #include "ui/ui_utility.h"
+#include "ui/painter.h"
 #include "ui/platform/ui_platform_utility.h"
 #include "base/invoke_queued.h"
-#include "styles/style_widgets.h"
 #include "base/platform/base_platform_info.h"
+#include "styles/style_widgets.h"
 
 #include <QtGui/QScreen>
 #include <QtGui/QWindow>
@@ -90,7 +91,7 @@ void Tooltip::popup(const QPoint &m, const QString &text, const style::Tooltip *
 	_st = st;
 	_text = Text::String(_st->textStyle, text, kPlainTextOptions, _st->widthMax);
 
-	_useTransparency = Platform::TranslucentWindowsSupported(_point);
+	_useTransparency = Platform::TranslucentWindowsSupported();
 	setAttribute(Qt::WA_OpaquePaintEvent, !_useTransparency);
 
 	int32 addw = 2 * st::lineWidth + _st->textPadding.left() + _st->textPadding.right();

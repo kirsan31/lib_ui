@@ -498,10 +498,6 @@ CustomEmojiBlock::CustomEmojiBlock(
 	}
 }
 
-int AdjustCustomEmojiSize(int emojiSize) {
-	return base::SafeRound(emojiSize * 1.12);
-}
-
 NewlineBlock::NewlineBlock(
 	const style::font &font,
 	const QString &str,
@@ -760,6 +756,16 @@ void Block::destroy() {
 	default:
 		Unexpected("Bad text block type in Block(Block&&).");
 	}
+}
+
+int CountBlockHeight(
+		const AbstractBlock *block,
+		const style::TextStyle *st) {
+	return (block->type() == TextBlockTSkip)
+		? static_cast<const SkipBlock*>(block)->height()
+		: (st->lineHeight > st->font->height)
+		? st->lineHeight
+		: st->font->height;
 }
 
 } // namespace Text

@@ -6,6 +6,7 @@
 //
 #pragma once
 
+#include "ui/text/text_custom_emoji.h"
 #include "ui/style/style_core.h"
 #include "ui/emoji_config.h"
 
@@ -13,8 +14,11 @@
 
 #include <crl/crl_time.h>
 
-namespace Ui {
-namespace Text {
+namespace style {
+struct TextStyle;
+} // namespace style
+
+namespace Ui::Text {
 
 enum TextBlockType {
 	TextBlockTNewline = 0x01,
@@ -166,21 +170,6 @@ private:
 
 };
 
-class CustomEmoji {
-public:
-	virtual ~CustomEmoji() = default;
-	[[nodiscard]] virtual QString entityData() = 0;
-	virtual void paint(
-		QPainter &p,
-		int x,
-		int y,
-		crl::time now,
-		const QColor &preview,
-		bool paused) = 0;
-	virtual void unload() = 0;
-
-};
-
 class CustomEmojiBlock final : public AbstractBlock {
 public:
 	CustomEmojiBlock(
@@ -201,8 +190,6 @@ private:
 	friend class Renderer;
 
 };
-
-[[nodiscard]] int AdjustCustomEmojiSize(int emojiSize);
 
 class SkipBlock final : public AbstractBlock {
 public:
@@ -334,5 +321,12 @@ private:
 
 };
 
-} // namespace Text
-} // namespace Ui
+[[nodiscard]] int CountBlockHeight(
+	const AbstractBlock *block,
+	const style::TextStyle *st);
+
+[[nodiscard]] inline bool IsMono(int32 flags) {
+	return (flags & TextBlockFPre) || (flags & TextBlockFCode);
+}
+
+} // namespace Ui::Text

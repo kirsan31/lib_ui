@@ -10,6 +10,7 @@
 #include "ui/rp_widget.h"
 #include "ui/effects/animations.h"
 #include "ui/text/text_entity.h"
+#include "ui/text/text_custom_emoji.h"
 #include "styles/style_widgets.h"
 
 #include <QContextMenuEvent>
@@ -34,10 +35,6 @@ const auto kStrikeOutSequence = QKeySequence("ctrl+shift+x");
 const auto kMonospaceSequence = QKeySequence("ctrl+shift+m");
 const auto kEditLinkSequence = QKeySequence("ctrl+k");
 const auto kSpoilerSequence = QKeySequence("ctrl+shift+p");
-
-using CustomEmojiFactory = Fn<std::unique_ptr<Text::CustomEmoji>(
-	QStringView,
-	Fn<void()>)>;
 
 class PopupMenu;
 
@@ -121,6 +118,10 @@ protected:
 	void contextMenuEvent(QContextMenuEvent *e) override;
 	void inputMethodEvent(QInputMethodEvent *e) override;
 
+	void mousePressEvent(QMouseEvent *e) override;
+	void mouseReleaseEvent(QMouseEvent *e) override;
+	void mouseMoveEvent(QMouseEvent *e) override;
+
 	virtual void correctValue(const QString &was, QString &now);
 
 	style::font phFont() {
@@ -132,6 +133,9 @@ protected:
 private:
 	void updatePalette();
 	void refreshPlaceholder(const QString &text);
+
+	void touchUpdate(QPoint globalPosition);
+	void touchFinish();
 
 	QString _oldtext;
 	rpl::variable<QString> _placeholderFull;
@@ -149,7 +153,10 @@ private:
 	QMargins _textMrg;
 
 	QTimer _touchTimer;
-	bool _touchPress, _touchRightButton, _touchMove;
+	bool _touchPress = false;
+	bool _touchRightButton = false;
+	bool _touchMove = false;
+	bool _mousePressedInTouch = false;
 	QPoint _touchStart;
 
 	base::unique_qptr<PopupMenu> _contextMenu;
@@ -199,6 +206,7 @@ public:
 		MultiLine,
 	};
 	using TagList = TextWithTags::Tags;
+	using CustomEmojiFactory = Text::CustomEmojiFactory;
 
 	struct MarkdownTag {
 		// With each emoji being QChar::ObjectReplacementCharacter.
@@ -450,6 +458,10 @@ private:
 	void inputMethodEventInner(QInputMethodEvent *e);
 	void paintEventInner(QPaintEvent *e);
 
+	void mousePressEventInner(QMouseEvent *e);
+	void mouseReleaseEventInner(QMouseEvent *e);
+	void mouseMoveEventInner(QMouseEvent *e);
+
 	QMimeData *createMimeDataFromSelectionInner() const;
 	bool canInsertFromMimeDataInner(const QMimeData *source) const;
 	void insertFromMimeDataInner(const QMimeData *source);
@@ -524,6 +536,9 @@ private:
 	void customEmojiRepaint();
 	void highlightMarkdown();
 
+	void touchUpdate(QPoint globalPosition);
+	void touchFinish();
+
 	const style::InputField &_st;
 
 	Mode _mode = Mode::SingleLine;
@@ -596,6 +611,7 @@ private:
 	bool _touchPress = false;
 	bool _touchRightButton = false;
 	bool _touchMove = false;
+	bool _mousePressedInTouch = false;
 	QPoint _touchStart;
 
 	bool _correcting = false;
@@ -692,6 +708,10 @@ protected:
 	void contextMenuEvent(QContextMenuEvent *e) override;
 	void inputMethodEvent(QInputMethodEvent *e) override;
 
+	void mousePressEvent(QMouseEvent *e) override;
+	void mouseReleaseEvent(QMouseEvent *e) override;
+	void mouseMoveEvent(QMouseEvent *e) override;
+
 	virtual void correctValue(
 		const QString &was,
 		int wasCursor,
@@ -700,14 +720,14 @@ protected:
 	}
 	void setCorrectedText(QString &now, int &nowCursor, const QString &newText, int newPos);
 
-	virtual void paintAdditionalPlaceholder(Painter &p) {
+	virtual void paintAdditionalPlaceholder(QPainter &p) {
 	}
 
 	style::font phFont() {
 		return _st.font;
 	}
 
-	void placeholderAdditionalPrepare(Painter &p);
+	void placeholderAdditionalPrepare(QPainter &p);
 	QRect placeholderRect() const;
 
 	void setTextMargins(const QMargins &mrg);
@@ -717,6 +737,9 @@ private:
 	void updatePalette();
 	void refreshPlaceholder(const QString &text);
 	void setErrorShown(bool error);
+
+	void touchUpdate(QPoint globalPosition);
+	void touchFinish();
 
 	void setFocused(bool focused);
 
@@ -755,6 +778,7 @@ private:
 	bool _touchPress = false;
 	bool _touchRightButton = false;
 	bool _touchMove = false;
+	bool _mousePressedInTouch = false;
 	QPoint _touchStart;
 
 	base::unique_qptr<PopupMenu> _contextMenu;
