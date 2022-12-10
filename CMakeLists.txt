@@ -6,7 +6,7 @@
 
 add_library(lib_ui STATIC)
 add_library(desktop-app::lib_ui ALIAS lib_ui)
-init_target(lib_ui)
+init_target(lib_ui ltcg)
 
 include(cmake/generate_palette.cmake)
 include(cmake/generate_styles.cmake)
@@ -233,6 +233,8 @@ PRIVATE
     ui/widgets/tooltip.h
     ui/wrap/fade_wrap.cpp
     ui/wrap/fade_wrap.h
+    ui/wrap/follow_slide_wrap.cpp
+    ui/wrap/follow_slide_wrap.h
     ui/wrap/padding_wrap.cpp
     ui/wrap/padding_wrap.h
     ui/wrap/slide_wrap.cpp
