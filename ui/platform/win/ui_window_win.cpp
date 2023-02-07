@@ -548,8 +548,10 @@ bool WindowHelper::handleNativeEvent(
 
 		POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
 		ScreenToClient(_handle, &p);
-		const auto mapped = QPoint(p.x, p.y)
-			/ window()->windowHandle()->devicePixelRatio();
+		const auto ratio = window()->windowHandle()->devicePixelRatio();
+		const auto mapped = QPoint(
+			int(std::floor(p.x / ratio)),
+			int(std::floor(p.y / ratio)));
 		*result = [&] {
 			if (!window()->rect().contains(mapped)) {
 				return HTTRANSPARENT;
@@ -581,12 +583,9 @@ bool WindowHelper::handleNativeEvent(
 		_systemButtonOver.fire(systemButtonHitTest(*result));
 	} return true;
 
-	// should return true for Qt not to change window size
-	// when moving the window between screens
-	// change to false once runtime scale change would be supported
 	case WM_DPICHANGED: {
 		_dpi = LOWORD(wParam);
-	} return true;
+	} return false;
 
 	}
 	return false;
