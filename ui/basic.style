@@ -32,7 +32,7 @@ semiboldFont: font(fsize semibold);
 boxFontSize: 14px;
 boxTextFont: font(boxFontSize);
 
-emojiSize: 18px;
+emojiSize: 22px;
 emojiPadding: 1px;
 
 lineWidth: 1px;

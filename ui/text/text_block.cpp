@@ -761,11 +761,15 @@ void Block::destroy() {
 int CountBlockHeight(
 		const AbstractBlock *block,
 		const style::TextStyle *st) {
-	return (block->type() == TextBlockTSkip)
-		? static_cast<const SkipBlock*>(block)->height()
-		: (st->lineHeight > st->font->height)
-		? st->lineHeight
-		: st->font->height;
+	switch (block->type()) {
+	case TextBlockTEmoji:
+	case TextBlockTCustomEmoji:
+		return std::max(st::emojiSize, st->lineHeight > st->font->height ? st->lineHeight : st->font->height);
+	case TextBlockTSkip:
+		return static_cast<const SkipBlock*>(block)->height();
+	default:
+		return st->lineHeight > st->font->height ? st->lineHeight : st->font->height;
+	}
 }
 
 } // namespace Text

@@ -1098,7 +1098,7 @@ QSizeF CustomEmojiObject::intrinsicSize(
 	const auto size = st::emojiSize * 1.;
 	const auto width = size + st::emojiPadding * 2.;
 	const auto font = format.toCharFormat().font();
-	const auto height = std::min(QFontMetrics(font).height() * 1., size);
+	const auto height = std::max(QFontMetrics(font).height() * 1., size);
 	if (!_skip) {
 		const auto emoji = Ui::Text::AdjustCustomEmojiSize(st::emojiSize);
 		_skip = (st::emojiSize - emoji) / 2;
