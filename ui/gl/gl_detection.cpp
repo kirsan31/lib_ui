@@ -10,6 +10,7 @@
 #include "ui/integration.h"
 #include "base/debug_log.h"
 #include "base/options.h"
+#include "base/platform/base_platform_info.h"
 
 #include <QtCore/QSet>
 #include <QtCore/QFile>
@@ -173,8 +174,9 @@ Capabilities CheckCapabilities(QWidget *widget) {
 		LOG(("EGL Extensions: %1").arg(egllist.join(", ")));
 #endif // Q_OS_WIN
 
-#ifdef Q_OS_LINUX
-		if (version && QByteArray(version).contains("NVIDIA")) {
+		if (::Platform::IsLinux()
+			&& version
+			&& QByteArray(version).contains("NVIDIA")) {
 			// https://github.com/telegramdesktop/tdesktop/issues/16830
 			if (AllowLinuxNvidiaOpenGL.value()) {
 				LOG_ONCE(("OpenGL: Allow on NVIDIA driver (experimental)."));
@@ -183,7 +185,6 @@ Capabilities CheckCapabilities(QWidget *widget) {
 				return false;
 			}
 		}
-#endif // Q_OS_LINUX
 
 		return true;
 	}();
@@ -204,6 +205,15 @@ Capabilities CheckCapabilities(QWidget *widget) {
 			).arg(version));
 	}
 	return result;
+}
+
+Backend ChooseBackendDefault(Capabilities capabilities) {
+	const auto use = ::Platform::IsMac()
+		? true
+		: ::Platform::IsWindows()
+		? capabilities.supported
+		: capabilities.transparency;
+	return use ? Backend::OpenGL : Backend::Raster;
 }
 
 bool LastCrashCheckFailed() {
