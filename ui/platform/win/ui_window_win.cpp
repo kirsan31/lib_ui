@@ -30,8 +30,7 @@
 
 Q_DECLARE_METATYPE(QMargins);
 
-namespace Ui {
-namespace Platform {
+namespace Ui::Platform {
 namespace {
 
 constexpr auto kDWMWCP_ROUND = DWORD(2);
@@ -42,11 +41,25 @@ constexpr auto kDWMWA_TEXT_COLOR = DWORD(36);
 
 UINT(__stdcall *GetDpiForWindow)(_In_ HWND hwnd);
 
+int(__stdcall *GetSystemMetricsForDpi)(
+	_In_ int nIndex,
+	_In_ UINT dpi);
+
 [[nodiscard]] bool GetDpiForWindowSupported() {
 	static const auto Result = [&] {
 #define LOAD_SYMBOL(lib, name) base::Platform::LoadMethod(lib, #name, name)
 		const auto user32 = base::Platform::SafeLoadLibrary(L"User32.dll");
 		return LOAD_SYMBOL(user32, GetDpiForWindow);
+#undef LOAD_SYMBOL
+	}();
+	return Result;
+}
+
+[[nodiscard]] bool GetSystemMetricsForDpiSupported() {
+	static const auto Result = [&] {
+#define LOAD_SYMBOL(lib, name) base::Platform::LoadMethod(lib, #name, name)
+		const auto user32 = base::Platform::SafeLoadLibrary(L"User32.dll");
+		return LOAD_SYMBOL(user32, GetSystemMetricsForDpi);
 #undef LOAD_SYMBOL
 	}();
 	return Result;
@@ -132,46 +145,46 @@ void FixAeroSnap(HWND handle) {
 
 class WindowHelper::NativeFilter final : public QAbstractNativeEventFilter {
 public:
-       void registerWindow(HWND handle, not_null<WindowHelper*> helper);
-       void unregisterWindow(HWND handle);
+	void registerWindow(HWND handle, not_null<WindowHelper*> helper);
+	void unregisterWindow(HWND handle);
 
-       bool nativeEventFilter(
-               const QByteArray &eventType,
-               void *message,
-               long *result) override;
+	bool nativeEventFilter(
+		const QByteArray &eventType,
+		void *message,
+		long *result) override;
 
 private:
-       base::flat_map<HWND, not_null<WindowHelper*>> _windowByHandle;
+	base::flat_map<HWND, not_null<WindowHelper*>> _windowByHandle;
 
 };
 
 void WindowHelper::NativeFilter::registerWindow(
-               HWND handle,
-               not_null<WindowHelper*> helper) {
-       _windowByHandle.emplace(handle, helper);
+		HWND handle,
+		not_null<WindowHelper*> helper) {
+	_windowByHandle.emplace(handle, helper);
 }
 
 void WindowHelper::NativeFilter::unregisterWindow(HWND handle) {
-       _windowByHandle.remove(handle);
+	_windowByHandle.remove(handle);
 }
 
 bool WindowHelper::NativeFilter::nativeEventFilter(
-               const QByteArray &eventType,
-               void *message,
-               long *result) {
-       auto filtered = false;
-       const auto msg = static_cast<MSG*>(message);
-       const auto i = _windowByHandle.find(msg->hwnd);
-       if (i != end(_windowByHandle)) {
-               base::Integration::Instance().enterFromEventLoop([&] {
-                       filtered = i->second->handleNativeEvent(
-                               msg->message,
-                               msg->wParam,
-                               msg->lParam,
-                               reinterpret_cast<LRESULT*>(result));
-               });
-       }
-       return filtered;
+		const QByteArray &eventType,
+		void *message,
+		long *result) {
+	auto filtered = false;
+	const auto msg = static_cast<MSG*>(message);
+	const auto i = _windowByHandle.find(msg->hwnd);
+	if (i != end(_windowByHandle)) {
+		base::Integration::Instance().enterFromEventLoop([&] {
+			filtered = i->second->handleNativeEvent(
+				msg->message,
+				msg->wParam,
+				msg->lParam,
+				reinterpret_cast<LRESULT*>(result));
+		});
+	}
+	return filtered;
 }
 
 WindowHelper::WindowHelper(not_null<RpWidget*> window)
@@ -426,7 +439,7 @@ bool WindowHelper::handleNativeEvent(
 	} return true;
 
 	case WM_NCCALCSIZE: {
-		if (_title->isHidden() || !wParam) {
+		if (_title->isHidden() || window()->isFullScreen() || !wParam) {
 			return false;
 		}
 		WINDOWPLACEMENT wp;
@@ -434,31 +447,37 @@ bool WindowHelper::handleNativeEvent(
 		if (GetWindowPlacement(_handle, &wp)
 			&& (wp.showCmd == SW_SHOWMAXIMIZED)) {
 			const auto r = &((LPNCCALCSIZE_PARAMS)lParam)->rgrc[0];
-			const auto hMonitor = MonitorFromPoint(
-				{ (r->left + r->right) / 2, (r->top + r->bottom) / 2 },
+			const auto dpi = _dpi.current();
+			const auto style = GetWindowLongPtr(_handle, GWL_STYLE);
+			const auto borderWidth = (GetSystemMetricsForDpiSupported() && dpi)
+				? GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi)
+					+ GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi)
+				: GetSystemMetrics(SM_CXSIZEFRAME)
+					+ GetSystemMetrics(SM_CXPADDEDBORDER);
+			r->left += borderWidth;
+			r->right -= borderWidth;
+			r->top += borderWidth;
+			r->bottom -= borderWidth;
+			const auto hMonitor = MonitorFromWindow(
+				_handle,
 				MONITOR_DEFAULTTONEAREST);
-			if (hMonitor) {
-				MONITORINFO mi;
-				mi.cbSize = sizeof(mi);
-				if (GetMonitorInfo(hMonitor, &mi)) {
-					*r = mi.rcWork;
-					UINT uEdge = (UINT)-1;
-					if (IsTaskbarAutoHidden(&mi.rcMonitor, &uEdge)) {
-						switch (uEdge) {
-						case ABE_LEFT: r->left += 1; break;
-						case ABE_RIGHT: r->right -= 1; break;
-						case ABE_TOP: r->top += 1; break;
-						case ABE_BOTTOM: r->bottom -= 1; break;
-						}
-					}
+			MONITORINFO mi;
+			mi.cbSize = sizeof(mi);
+			UINT uEdge = (UINT)-1;
+			if (GetMonitorInfo(hMonitor, &mi)
+				&& IsTaskbarAutoHidden(&mi.rcMonitor, &uEdge)) {
+				switch (uEdge) {
+				case ABE_LEFT: r->left += 1; break;
+				case ABE_RIGHT: r->right -= 1; break;
+				case ABE_TOP: r->top += 1; break;
+				case ABE_BOTTOM: r->bottom -= 1; break;
 				}
 			}
 			if (result) *result = 0;
 		} else {
 			if (result) *result = WVR_REDRAW;
 		}
-		return true;
-	}
+	} return true;
 
 	case WM_NCRBUTTONUP: {
 		if (_title->isHidden()) {
@@ -818,15 +837,15 @@ void WindowHelper::fixMaximizedWindow() {
 }
 
 not_null<WindowHelper::NativeFilter*> WindowHelper::GetNativeFilter() {
-       Expects(QCoreApplication::instance() != nullptr);
+	Expects(QCoreApplication::instance() != nullptr);
 
-       static const auto GlobalFilter = [&] {
-               const auto application = QCoreApplication::instance();
-               const auto filter = Ui::CreateChild<NativeFilter>(application);
-               application->installNativeEventFilter(filter);
-               return filter;
-       }();
-       return GlobalFilter;
+	static const auto GlobalFilter = [&] {
+		const auto application = QCoreApplication::instance();
+		const auto filter = Ui::CreateChild<NativeFilter>(application);
+		application->installNativeEventFilter(filter);
+		return filter;
+	}();
+	return GlobalFilter;
 }
 
 HWND GetWindowHandle(not_null<QWidget*> widget) {
@@ -858,5 +877,4 @@ bool NativeWindowFrameSupported() {
 	return true;
 }
 
-} // namespace Platform
-} // namespace Ui
+} // namespace Ui::Platform
