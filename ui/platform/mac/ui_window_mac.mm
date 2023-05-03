@@ -270,7 +270,9 @@ void WindowHelper::Private::enforceStyle() {
 }
 
 void WindowHelper::Private::initOpenGL() {
+#if QT_VERSION < QT_VERSION_CHECK(6, 4, 0)
 	auto forceOpenGL = std::make_unique<QOpenGLWidget>(_owner->window());
+#endif // Qt < 6.4.0
 }
 
 void WindowHelper::Private::resolveWeakPointers() {
@@ -418,6 +420,10 @@ void WindowHelper::setupBodyTitleAreaEvents() {
 
 void WindowHelper::close() {
 	_private->close();
+}
+
+const style::TextStyle &WindowHelper::titleTextStyle() const {
+	return _title->textStyle();
 }
 
 void WindowHelper::init() {

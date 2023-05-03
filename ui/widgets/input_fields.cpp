@@ -129,6 +129,11 @@ bool IsNewline(QChar ch) {
 		.arg(++GlobalCustomEmojiCounter);
 }
 
+[[nodiscard]] QString DefaultTagMimeProcessor(QStringView mimeTag) {
+	// By default drop formatting in InputField-s.
+	return {};
+}
+
 [[nodiscard]] uint64 CustomEmojiIdFromLink(QStringView link) {
 	const auto skip = Ui::InputField::kCustomEmojiTagStart.size();
 	const auto index = link.indexOf('?', skip + 1);
@@ -1968,9 +1973,6 @@ QString InputField::getTextPart(
 				if (IsNewline(*ch) && ch->unicode() != '\r') {
 					*ch = QLatin1Char('\n');
 				} else switch (ch->unicode()) {
-				case QChar::Nbsp: {
-					*ch = QLatin1Char(' ');
-				} break;
 				case QChar::ObjectReplacementCharacter: {
 					if (ch > begin) {
 						result.append(begin, ch - begin);
@@ -2033,7 +2035,7 @@ void InputField::processFormatting(int insertPosition, int insertEnd) {
 
 	// Apply inserted tags.
 	const auto insertedTagsProcessor = _insertedTagsAreFromMime
-		? _tagMimeProcessor
+		? (_tagMimeProcessor ? _tagMimeProcessor : DefaultTagMimeProcessor)
 		: nullptr;
 	const auto breakTagOnNotLetterTill = ProcessInsertedTags(
 		_st,
