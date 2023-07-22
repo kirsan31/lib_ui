@@ -1272,6 +1272,15 @@ void InputField::scrollTo(int top) {
 	_inner->verticalScrollBar()->setValue(top);
 }
 
+
+bool InputField::menuShown() const {
+	return _contextMenu != nullptr;
+}
+
+rpl::producer<bool> InputField::menuShownValue() const {
+	return _menuShownChanges.events_starting_with(menuShown());
+}
+
 bool InputField::viewportEventInner(QEvent *e) {
 	if (e->type() == QEvent::TouchBegin
 		|| e->type() == QEvent::TouchUpdate
@@ -1639,20 +1648,19 @@ void InputField::paintRoundSurrounding(
 		QRect clip,
 		float64 errorDegree,
 		float64 focusedDegree) {
+	const auto divide = _st.borderDenominator ? _st.borderDenominator : 1;
+	const auto border = _st.border / float64(divide);
+	const auto borderHalf = border / 2.;
 	auto pen = anim::pen(_st.borderFg, _st.borderFgActive, focusedDegree);
-	pen.setWidth(_st.border);
+	pen.setWidthF(border);
 	p.setPen(pen);
 	p.setBrush(anim::brush(_st.textBg, _st.textBgActive, focusedDegree));
 
 	PainterHighQualityEnabler hq(p);
-	const auto radius = _st.borderRadius - (_st.border / 2.);
+	const auto radius = _st.borderRadius - borderHalf;
 	p.drawRoundedRect(
 		QRectF(0, 0, width(), height()).marginsRemoved(
-			QMarginsF(
-				_st.border / 2.,
-				_st.border / 2.,
-				_st.border / 2.,
-				_st.border / 2.)),
+			QMarginsF(borderHalf, borderHalf, borderHalf, borderHalf)),
 		radius,
 		radius);
 }
@@ -1777,7 +1785,7 @@ void InputField::focusInEvent(QFocusEvent *e) {
 	_borderAnimationStart = (e->reason() == Qt::MouseFocusReason)
 		? mapFromGlobal(QCursor::pos()).x()
 		: (width() / 2);
-	InvokeQueued(this, [=] { onFocusInner(); });
+	InvokeQueued(this, [=] { if (hasFocus()) onFocusInner(); });
 }
 
 void InputField::mousePressEvent(QMouseEvent *e) {
@@ -3629,6 +3637,10 @@ void InputField::contextMenuEventInner(QContextMenuEvent *e, QMenu *m) {
 	if (const auto menu = m ? m : _inner->createStandardContextMenu()) {
 		addMarkdownActions(menu, e);
 		_contextMenu = base::make_unique_q<PopupMenu>(this, menu, _st.menu);
+		QObject::connect(_contextMenu.get(), &QObject::destroyed, [=] {
+			_menuShownChanges.fire(false);
+		});
+		_menuShownChanges.fire(true);
 		_contextMenu->popup(e->globalPos());
 	}
 }
