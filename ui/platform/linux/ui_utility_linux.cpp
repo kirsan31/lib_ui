@@ -7,8 +7,7 @@
 #include "ui/platform/linux/ui_utility_linux.h"
 
 #include "base/platform/base_platform_info.h"
-#include "base/call_delayed.h"
-#include "ui/platform/linux/ui_linux_wayland_integration.h"
+#include "base/platform/linux/base_linux_library.h"
 
 #ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 #include "base/platform/linux/base_linux_xcb_utilities.h"
@@ -19,15 +18,32 @@
 #include <QtWidgets/QApplication>
 #include <qpa/qplatformwindow_p.h>
 
+extern "C" {
+
+typedef int32_t wl_fixed_t;
+struct wl_object;
+struct wl_array;
+struct wl_proxy;
+struct xdg_toplevel;
+
+union wl_argument {
+	int32_t i;           /**< `int`    */
+	uint32_t u;          /**< `uint`   */
+	wl_fixed_t f;        /**< `fixed`  */
+	const char *s;       /**< `string` */
+	struct wl_object *o; /**< `object` */
+	uint32_t n;          /**< `new_id` */
+	struct wl_array *a;  /**< `array`  */
+	int32_t h;           /**< `fd`     */
+};
+
+}
+
 namespace Ui {
 namespace Platform {
 namespace {
 
 static const auto kXCBFrameExtentsAtomName = u"_GTK_FRAME_EXTENTS"_q;
-constexpr auto kDelayDeactivateEventTimeout = crl::time(400);
-
-bool PendingDeactivateEvent/* = false*/;
-int ChildPopupsHiddenOnWayland/* = 0*/;
 
 #ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
 std::optional<bool> XCBWindowMapped(xcb_window_t window) {
@@ -396,6 +412,54 @@ void ShowXCBWindowMenu(not_null<QWidget*> widget, const QPoint &point) {
 }
 #endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+void ShowWaylandWindowMenu(not_null<QWidget*> widget, const QPoint &point) {
+	static const auto wl_proxy_marshal_array = [] {
+		void (*result)(
+			struct wl_proxy *p,
+			uint32_t opcode,
+			union wl_argument *args) = nullptr;
+
+		if (const auto lib = base::Platform::LoadLibrary(
+				"libwayland-client.so.0",
+				RTLD_NODELETE)) {
+			base::Platform::LoadSymbol(lib, "wl_proxy_marshal_array", result);
+		}
+
+		return result;
+	}();
+
+	if (!wl_proxy_marshal_array) {
+		return;
+	}
+
+	using namespace QNativeInterface;
+	using namespace QNativeInterface::Private;
+	const auto window = not_null(widget->windowHandle());
+	const auto native = qApp->nativeInterface<QWaylandApplication>();
+	const auto nativeWindow = window->nativeInterface<QWaylandWindow>();
+	if (!native || !nativeWindow) {
+		return;
+	}
+
+	const auto toplevel = nativeWindow->surfaceRole<xdg_toplevel>();
+	const auto seat = native->lastInputSeat();
+	if (!toplevel || !seat) {
+		return;
+	}
+
+	wl_proxy_marshal_array(
+		reinterpret_cast<wl_proxy*>(toplevel),
+		4, // XDG_TOPLEVEL_SHOW_WINDOW_MENU
+		std::array{
+			wl_argument{ .o = reinterpret_cast<wl_object*>(seat) },
+			wl_argument{ .u = native->lastInputSerial() },
+			wl_argument{ .i = point.x() },
+			wl_argument{ .i = point.y() },
+		}.data());
+}
+#endif // Qt >= 6.5.0
+
 } // namespace
 
 bool IsApplicationActive() {
@@ -527,41 +591,19 @@ void UnsetWindowMargins(not_null<QWidget*> widget) {
 }
 
 void ShowWindowMenu(not_null<QWidget*> widget, const QPoint &point) {
-	if (const auto integration = WaylandIntegration::Instance()) {
-		integration->showWindowMenu(widget, point);
-	} else if (::Platform::IsX11()) {
-#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
-		ShowXCBWindowMenu(widget, point);
-#endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
-	}
-}
-
-void RegisterChildPopupHiding() {
-	if (!::Platform::IsWayland()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+	if (::Platform::IsWayland()) {
+		ShowWaylandWindowMenu(widget, point);
 		return;
 	}
-	++ChildPopupsHiddenOnWayland;
-	base::call_delayed(kDelayDeactivateEventTimeout, [] {
-		if (!--ChildPopupsHiddenOnWayland) {
-			if (base::take(PendingDeactivateEvent)) {
-				// We didn't receive ApplicationActivate event in time.
-				QEvent appDeactivate(QEvent::ApplicationDeactivate);
-				QCoreApplication::sendEvent(qApp, &appDeactivate);
-			}
-		}
-	});
-}
+#endif // Qt >= 6.5.0
 
-bool SkipApplicationDeactivateEvent() {
-	if (!ChildPopupsHiddenOnWayland) {
-		return false;
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
+	if (::Platform::IsX11()) {
+		ShowXCBWindowMenu(widget, point);
+		return;
 	}
-	PendingDeactivateEvent = true;
-	return true;
-}
-
-void GotApplicationActivateEvent() {
-	PendingDeactivateEvent = false;
+#endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 }
 
 } // namespace Platform
