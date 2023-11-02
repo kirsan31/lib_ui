@@ -9,6 +9,7 @@
 #include "ui/gl/gl_detection.h"
 #include "ui/text/text_entity.h"
 #include "ui/text/text_block.h"
+#include "ui/toast/toast.h"
 #include "ui/basic_click_handlers.h"
 #include "base/platform/base_platform_info.h"
 
@@ -88,6 +89,11 @@ bool Integration::handleUrlClick(
 	return false;
 }
 
+bool Integration::copyPreOnClick(const QVariant &context) {
+	Toast::Show(u"Code copied to clipboard."_q);
+	return true;
+}
+
 QString Integration::convertTagToMimeTag(const QString &tagId) {
 	return tagId;
 }
@@ -148,6 +154,10 @@ QString Integration::phraseFormattingStrikeOut() {
 	return "Strike-through";
 }
 
+QString Integration::phraseFormattingBlockquote() {
+	return "Quote";
+}
+
 QString Integration::phraseFormattingMonospace() {
 	return "Monospace";
 }
@@ -202,6 +212,10 @@ QString Integration::phraseBotAllowWriteTitle() {
 
 QString Integration::phraseBotAllowWriteConfirm() {
 	return "Allow";
+}
+
+QString Integration::phraseQuoteHeaderCopy() {
+	return "copy";
 }
 
 } // namespace Ui

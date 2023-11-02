@@ -1424,7 +1424,11 @@ QStringList PrepareSearchWords(
 }
 
 bool CutPart(TextWithEntities &sending, TextWithEntities &left, int32 limit) {
-	if (left.text.isEmpty() || !limit) return false;
+	Expects(limit > 0);
+
+	if (left.text.isEmpty()) {
+		return false;
+	}
 
 	int32 currentEntity = 0, goodEntity = currentEntity, entityCount = left.entities.size();
 	bool goodInEntity = false, goodCanBreakEntity = false;
@@ -1438,7 +1442,9 @@ bool CutPart(TextWithEntities &sending, TextWithEntities &left, int32 limit) {
 		if (s > half) {
 			bool inEntity = (currentEntity < entityCount) && (ch > start + left.entities[currentEntity].offset()) && (ch < start + left.entities[currentEntity].offset() + left.entities[currentEntity].length());
 			EntityType entityType = (currentEntity < entityCount) ? left.entities[currentEntity].type() : EntityType::Invalid;
-			bool canBreakEntity = (entityType == EntityType::Pre || entityType == EntityType::Code); // #TODO entities
+			bool canBreakEntity = (entityType == EntityType::Pre)
+				|| (entityType == EntityType::Blockquote)
+				|| (entityType == EntityType::Code); // #TODO entities
 			int32 noEntityLevel = inEntity ? 0 : 1;
 
 			auto markGoodAsLevel = [&](int newLevel) {
@@ -1464,9 +1470,15 @@ bool CutPart(TextWithEntities &sending, TextWithEntities &left, int32 limit) {
 						}
 					} else if (ch + 1 < end && IsNewline(*(ch + 1))) {
 						markGoodAsLevel(15);
-					} else if (currentEntity < entityCount && ch + 1 == start + left.entities[currentEntity].offset() && left.entities[currentEntity].type() == EntityType::Pre) {
+					} else if (currentEntity < entityCount
+						&& ch + 1 == start + left.entities[currentEntity].offset()
+						&& (left.entities[currentEntity].type() == EntityType::Pre
+							|| left.entities[currentEntity].type() == EntityType::Blockquote)) {
 						markGoodAsLevel(14);
-					} else if (currentEntity > 0 && ch == start + left.entities[currentEntity - 1].offset() + left.entities[currentEntity - 1].length() && left.entities[currentEntity - 1].type() == EntityType::Pre) {
+					} else if (currentEntity > 0
+						&& ch == start + left.entities[currentEntity - 1].offset() + left.entities[currentEntity - 1].length()
+						&& (left.entities[currentEntity - 1].type() == EntityType::Pre
+							|| left.entities[currentEntity - 1].type() == EntityType::Blockquote)) {
 						markGoodAsLevel(14);
 					} else {
 						markGoodAsLevel(13);
@@ -1525,10 +1537,7 @@ bool CutPart(TextWithEntities &sending, TextWithEntities &left, int32 limit) {
 			return true;
 		}
 	}
-	sending.text = left.text;
-	left.text = QString();
-	sending.entities = left.entities;
-	left.entities = EntitiesInText();
+	sending = base::take(left);
 	return true;
 }
 
@@ -1882,7 +1891,7 @@ void Trim(TextWithEntities &result) {
 }
 
 int SerializeTagsSize(const TextWithTags::Tags &tags) {
-	auto result = qint32(0);
+	auto result = int(sizeof(qint32)); // QByteArray size
 	if (tags.isEmpty()) {
 		return result;
 	}
@@ -2029,6 +2038,7 @@ EntitiesInText ConvertTextTagsToEntities(const TextWithTags::Tags &tags) {
 		EntityType::Spoiler,
 		EntityType::Code,
 		EntityType::Pre,
+		EntityType::Blockquote,
 	};
 	struct State {
 		QString link;
@@ -2101,14 +2111,11 @@ EntitiesInText ConvertTextTagsToEntities(const TextWithTags::Tags &tags) {
 				closeType(type);
 			}
 		}
-		if (linkChanged && !nextState.link.isEmpty()) {
-			if (Ui::InputField::IsCustomEmojiLink(nextState.link)) {
-				const auto data = Ui::InputField::CustomEmojiEntityData(
-					nextState.link);
-				if (!data.isEmpty()) {
-					openType(EntityType::CustomEmoji, data);
-				}
-			} else if (IsMentionLink(nextState.link)) {
+		const auto openLink = linkChanged && !nextState.link.isEmpty();
+		const auto openCustomEmoji = openLink
+			&& Ui::InputField::IsCustomEmojiLink(nextState.link);
+		if (openLink && !openCustomEmoji) {
+			if (IsMentionLink(nextState.link)) {
 				const auto data = MentionEntityData(nextState.link);
 				if (!data.isEmpty()) {
 					openType(EntityType::MentionName, data);
@@ -2120,6 +2127,13 @@ EntitiesInText ConvertTextTagsToEntities(const TextWithTags::Tags &tags) {
 		for (const auto type : kInMaskTypes) {
 			if (nextState.has(type) && !state.has(type)) {
 				openType(type, nextState.language);
+			}
+		}
+		if (openCustomEmoji) {
+			const auto data = Ui::InputField::CustomEmojiEntityData(
+				nextState.link);
+			if (!data.isEmpty()) {
+				openType(EntityType::CustomEmoji, data);
 			}
 		}
 		state = nextState;
@@ -2146,6 +2160,8 @@ EntitiesInText ConvertTextTagsToEntities(const TextWithTags::Tags &tags) {
 				&& single.startsWith(Tags::kTagPre)) {
 				result.set(EntityType::Pre);
 				result.language = single.mid(languageStart).toString();
+			} else if (single == Tags::kTagBlockquote) {
+				result.set(EntityType::Blockquote);
 			} else if (single == Tags::kTagSpoiler) {
 				result.set(EntityType::Spoiler);
 			} else {
@@ -2253,6 +2269,9 @@ TextWithTags::Tags ConvertEntitiesToTextTags(
 			}
 			push(Ui::InputField::kTagPre);
 		} break;
+		case EntityType::Blockquote:
+			push(Ui::InputField::kTagBlockquote);
+			break;
 		case EntityType::Spoiler: push(Ui::InputField::kTagSpoiler); break;
 		}
 	}

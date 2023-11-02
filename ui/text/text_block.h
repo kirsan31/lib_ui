@@ -11,9 +11,9 @@
 #include "ui/style/style_core.h"
 #include "ui/emoji_config.h"
 
-#include <private/qfixed_p.h>
-
 #include <crl/crl_time.h>
+
+#include <private/qfixed_p.h>
 
 namespace style {
 struct TextStyle;
@@ -30,15 +30,16 @@ enum class TextBlockType : uint16 {
 };
 
 enum class TextBlockFlag : uint16 {
-	Bold      = 0x001,
-	Italic    = 0x002,
-	Underline = 0x004,
-	StrikeOut = 0x008,
-	Tilde     = 0x010, // Tilde fix in OpenSans.
-	Semibold  = 0x020,
-	Code      = 0x040,
-	Pre       = 0x080,
-	Spoiler   = 0x100,
+	Bold       = 0x001,
+	Italic     = 0x002,
+	Underline  = 0x004,
+	StrikeOut  = 0x008,
+	Tilde      = 0x010, // Tilde fix in OpenSans.
+	Semibold   = 0x020,
+	Code       = 0x040,
+	Pre        = 0x080,
+	Spoiler    = 0x100,
+	Blockquote = 0x200,
 };
 inline constexpr bool is_flag_type(TextBlockFlag) { return true; }
 using TextBlockFlags = base::flags<TextBlockFlag>;
@@ -47,6 +48,10 @@ using TextBlockFlags = base::flags<TextBlockFlag>;
 	const style::font &font,
 	TextBlockFlags flags,
 	uint32 fontFlags = 0);
+
+[[nodiscard]] Qt::LayoutDirection UnpackParagraphDirection(
+	bool ltr,
+	bool rtl);
 
 class AbstractBlock {
 public:
@@ -102,10 +107,17 @@ public:
 		uint16 linkIndex,
 		uint16 colorIndex);
 
-	[[nodiscard]] Qt::LayoutDirection nextDirection() const;
+	[[nodiscard]] uint16 quoteIndex() const {
+		return _quoteIndex;
+	}
+	[[nodiscard]] Qt::LayoutDirection paragraphDirection() const {
+		return UnpackParagraphDirection(_paragraphLTR, _paragraphRTL);
+	}
 
 private:
-	Qt::LayoutDirection _nextDirection = Qt::LayoutDirectionAuto;
+	uint16 _quoteIndex = 0;
+	bool _paragraphLTR : 1 = false;
+	bool _paragraphRTL : 1 = false;
 
 	friend class String;
 	friend class Parser;
