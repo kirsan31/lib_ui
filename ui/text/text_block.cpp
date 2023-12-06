@@ -852,6 +852,9 @@ int CountBlockHeight(
 	case TextBlockType::Skip:
 		return static_cast<const SkipBlock*>(block)->height();
 	default:
+	    // 69c8353746dbb36808b8349eff0cac0f057fa2f4 
+	    // Allow line height less than font height.
+	    // st->lineHeight ? st->lineHeight : st->font->height
 		return st->lineHeight > st->font->height ? st->lineHeight : st->font->height;
 	}
 }

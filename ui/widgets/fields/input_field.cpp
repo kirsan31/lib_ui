@@ -31,6 +31,16 @@
 #include <QtWidgets/QScrollBar>
 #include <QtWidgets/QTextEdit>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <WinUser.h>
+#elif !defined DESKTOP_APP_DISABLE_X11_INTEGRATION // Q_OS_WIN
+#include "base/platform/linux/base_linux_xcb_utilities.h"
+
+#include <xcb/xcb_keysyms.h>
+#include <xkbcommon/xkbcommon-keysyms.h>
+#endif // !Q_OS_WIN && !DESKTOP_APP_DISABLE_X11_INTEGRATION
+
 namespace Ui {
 namespace {
 
@@ -41,7 +51,6 @@ constexpr auto kReplaceTagId = QTextFormat::UserProperty + 3;
 constexpr auto kTagProperty = QTextFormat::UserProperty + 4;
 constexpr auto kCustomEmojiText = QTextFormat::UserProperty + 5;
 constexpr auto kCustomEmojiLink = QTextFormat::UserProperty + 6;
-constexpr auto kCustomEmojiId = QTextFormat::UserProperty + 7;
 const auto kObjectReplacementCh = QChar(QChar::ObjectReplacementCharacter);
 const auto kObjectReplacement = QString::fromRawData(
 	&kObjectReplacementCh,
@@ -55,6 +64,7 @@ const auto &kTagPre = InputField::kTagPre;
 const auto &kTagBlockquote = InputField::kTagBlockquote;
 const auto &kTagSpoiler = InputField::kTagSpoiler;
 const auto &kCustomEmojiFormat = InputField::kCustomEmojiFormat;
+const auto &kCustomEmojiId = InputField::kCustomEmojiId;
 const auto kTagCheckLinkMeta = u"^:/:/:^"_q;
 const auto kNewlineChars = QString("\r\n")
 	+ QChar(0xfdd0) // QTextBeginningOfFrame
@@ -148,7 +158,7 @@ bool IsNewline(QChar ch) {
 	return base::StringViewMid(
 		link,
 		skip,
-		(index <= skip) ? -1 : (index - skip - 1)
+		(index <= skip) ? -1 : (index - skip)
 	).toULongLong();
 }
 
@@ -701,14 +711,6 @@ QTextImageFormat PrepareEmojiFormat(EmojiPtr emoji, const QFont &font) {
 	return result;
 }
 
-// Optimization: with null page size document does not re-layout
-// on each insertText / mergeCharFormat.
-void PrepareFormattingOptimization(not_null<QTextDocument*> document) {
-	if (!document->pageSize().isNull()) {
-		document->setPageSize(QSizeF(0, 0));
-	}
-}
-
 void RemoveDocumentTags(
 		const style::InputField &st,
 		not_null<QTextDocument*> document,
@@ -944,8 +946,8 @@ const QString InputField::kTagPre = u"```"_q;
 const QString InputField::kTagSpoiler = u"||"_q;
 const QString InputField::kTagBlockquote = u">"_q;
 const QString InputField::kCustomEmojiTagStart = u"custom-emoji://"_q;
-const int InputField::kCustomEmojiFormat
-	= QTextFormat::UserObject + 1;
+const int InputField::kCustomEmojiFormat = QTextFormat::UserObject + 1;
+const int InputField::kCustomEmojiId = QTextFormat::UserProperty + 7;
 
 class InputField::Inner final : public QTextEdit {
 public:
@@ -1003,6 +1005,14 @@ private:
 		return static_cast<InputField*>(parentWidget());
 	}
 	friend class InputField;
+
+#ifndef DESKTOP_APP_DISABLE_X11_INTEGRATION
+	base::Platform::XCB::ObjectWithConnection<
+		xcb_key_symbols_t,
+		xcb_key_symbols_alloc,
+		xcb_key_symbols_free
+	> _xcbKeySymbols;
+#endif // !DESKTOP_APP_DISABLE_X11_INTEGRATION
 
 };
 
@@ -2329,6 +2339,12 @@ void InputField::processFormatting(int insertPosition, int insertEnd) {
 	}
 }
 
+void InputField::forceProcessContentsChanges() {
+	PostponeCall(this, [=] {
+		handleContentsChanged();
+	});
+}
+
 void InputField::documentContentsChanged(
 		int position,
 		int charsRemoved,
@@ -2904,16 +2920,27 @@ bool InputField::handleMarkdownKey(QKeyEvent *e) {
 		return sequence.matches(events) == QKeySequence::ExactMatch;
 	};
 	const auto matchesCtrlShiftDot = [&] {
-#ifdef Q_OS_WIN
 		// We can't match ctrl+shift+. with QKeySequence because
 		// shift+. gives us '>' and ctrl+shift+> is not the same.
-		// So we check by nativeVirtualKey instead.
+		// So we check with native code instead.
+#ifdef Q_OS_WIN
 		return e->modifiers().testFlag(Qt::ControlModifier)
 			&& e->modifiers().testFlag(Qt::ShiftModifier)
-			&& (e->nativeVirtualKey() == 190); // VK_OEM_PERIOD
-#else // Q_OS_WIN
+			&& (e->nativeVirtualKey() == VK_OEM_PERIOD);
+#elif !defined DESKTOP_APP_DISABLE_X11_INTEGRATION // Q_OS_WIN
+		if (!_inner->_xcbKeySymbols) {
+			return false;
+		}
+		const auto keysym = xcb_key_symbols_get_keysym(
+			_inner->_xcbKeySymbols.get(),
+			e->nativeScanCode(),
+			0);
+		return e->modifiers().testFlag(Qt::ControlModifier)
+			&& e->modifiers().testFlag(Qt::ShiftModifier)
+			&& (keysym == XKB_KEY_period);
+#else // !Q_OS_WIN && !DESKTOP_APP_DISABLE_X11_INTEGRATION
 		return false;
-#endif // Q_OS_WIN
+#endif // !Q_OS_WIN && DESKTOP_APP_DISABLE_X11_INTEGRATION
 	};
 	if (e == QKeySequence::Bold) {
 		toggleSelectionMarkdown(kTagBold);
@@ -3946,5 +3973,13 @@ rpl::producer<Qt::KeyboardModifiers> InputField::submits() const {
 }
 
 InputField::~InputField() = default;
+
+// Optimization: with null page size document does not re-layout
+// on each insertText / mergeCharFormat.
+void PrepareFormattingOptimization(not_null<QTextDocument*> document) {
+	if (!document->pageSize().isNull()) {
+		document->setPageSize(QSizeF(0, 0));
+	}
+}
 
 } // namespace Ui

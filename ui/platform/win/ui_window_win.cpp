@@ -28,6 +28,7 @@
 #include <qpa/qwindowsysteminterface.h>
 
 #include <dwmapi.h>
+#include <shellapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
 
@@ -386,6 +387,14 @@ rpl::producer<HitTestResult> WindowHelper::systemButtonOver() const {
 
 rpl::producer<HitTestResult> WindowHelper::systemButtonDown() const {
 	return _systemButtonDown.events();
+}
+
+void WindowHelper::overrideSystemButtonOver(HitTestResult button) {
+	_systemButtonOver.fire_copy(button);
+}
+
+void WindowHelper::overrideSystemButtonDown(HitTestResult button) {
+	_systemButtonDown.fire_copy(button);
 }
 
 void WindowHelper::init() {

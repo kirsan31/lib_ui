@@ -558,6 +558,7 @@ WindowTitle {
 	bgActive: color;
 	fg: color;
 	fgActive: color;
+	shadow: bool;
 	style: TextStyle;
 	minimize: IconButton;
 	minimizeIconActive: icon;
@@ -1405,8 +1406,6 @@ defaultMultilineToast: Toast(defaultToast) {
 	minWidth: 160px;
 }
 
-shakeShift: 4px;
-
 // Windows specific title
 
 windowTitleButtonWidth: 36px;
@@ -1430,6 +1429,7 @@ defaultWindowTitle: WindowTitle {
 	style: TextStyle(defaultTextStyle) {
 		font: font(semibold 12px);
 	}
+	shadow: true;
 	minimize: IconButton(windowTitleButton) {
 		icon: icon {
 			{ windowTitleButtonSize, titleButtonBg },

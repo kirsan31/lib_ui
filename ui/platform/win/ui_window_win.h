@@ -9,8 +9,6 @@
 #include "ui/platform/ui_platform_window.h"
 #include "ui/platform/win/ui_window_shadow_win.h"
 
-#include <windef.h>
-
 namespace Ui {
 namespace Platform {
 
@@ -45,6 +43,8 @@ public:
 		-> rpl::producer<HitTestResult> override;
 	[[nodiscard]] auto systemButtonDown() const
 		-> rpl::producer<HitTestResult> override;
+	void overrideSystemButtonOver(HitTestResult button) override;
+	void overrideSystemButtonDown(HitTestResult button) override;
 
 private:
 	class NativeFilter;

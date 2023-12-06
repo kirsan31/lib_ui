@@ -6,15 +6,9 @@
 //
 #pragma once
 
+#include "base/platform/win/base_windows_rpcndr_h.h"
+#include "base/platform/win/base_windows_gdiplus_h.h"
 #include "base/flags.h"
-
-#include <windows.h>
-
-#define min(a, b) ((a) < (b) ? (a) : (b))
-#define max(a, b) ((a) < (b) ? (b) : (a))
-#include <gdiplus.h>
-#undef min
-#undef max
 
 class QColor;
 
