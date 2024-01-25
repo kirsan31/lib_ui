@@ -11,8 +11,10 @@
 #include "ui/platform/win/ui_windows_direct_manipulation.h"
 #include "ui/platform/ui_platform_utility.h"
 #include "ui/widgets/rp_window.h"
+#include "ui/widgets/elastic_scroll.h"
 #include "base/platform/win/base_windows_safe_library.h"
 #include "base/platform/base_platform_info.h"
+#include "base/event_filter.h"
 #include "base/integration.h"
 #include "base/invoke_queued.h"
 #include "base/debug_log.h"
@@ -355,7 +357,9 @@ void WindowHelper::setFixedSize(QSize size) {
 }
 
 void WindowHelper::setGeometry(QRect rect) {
-	window()->setGeometry(rect.marginsAdded({ 0, titleHeight(), 0, 0 }));
+	SetGeometryWithPossibleScreenChange(
+		window(),
+		rect.marginsAdded({ 0, titleHeight(), 0, 0 }));
 }
 
 void WindowHelper::showFullScreen() {
@@ -363,6 +367,7 @@ void WindowHelper::showFullScreen() {
 		_isFullScreen = true;
 		updateMargins();
 		updateCornersRounding();
+		updateCloaking();
 	}
 	window()->showFullScreen();
 }
@@ -373,6 +378,7 @@ void WindowHelper::showNormal() {
 		_isFullScreen = false;
 		updateMargins();
 		updateCornersRounding();
+		updateCloaking();
 	}
 }
 
@@ -489,6 +495,28 @@ void WindowHelper::init() {
 			handleDirectManipulationEvent(event);
 		}, window()->lifetime());
 	}
+
+	window()->shownValue() | rpl::filter([=](bool shown) {
+		return !shown;
+	}) | rpl::start_with_next([=] {
+		updateCloaking();
+
+		const auto qwindow = window()->windowHandle();
+		const auto firstPaintEventFilter = std::make_shared<QObject*>();
+		*firstPaintEventFilter = base::install_event_filter(
+			qwindow,
+			[=](not_null<QEvent*> e) {
+				if (e->type() == QEvent::Expose && qwindow->isExposed()) {
+					InvokeQueued(qwindow, [=] {
+						InvokeQueued(qwindow, [=] {
+							updateCloaking();
+						});
+					});
+					delete base::take(*firstPaintEventFilter);
+				}
+				return base::EventFilterResult::Continue;
+			});
+	}, window()->lifetime());
 }
 
 void WindowHelper::handleDirectManipulationEvent(
@@ -500,12 +528,14 @@ void WindowHelper::handleDirectManipulationEvent(
 			::GetCursorPos(&global);
 			auto local = global;
 			::ScreenToClient(_handle, &local);
+			const auto dpi = _dpi.current() ? double(_dpi.current()) : 96.;
+			const auto delta = QPointF(event.delta) / (dpi / 96.);
 			QWindowSystemInterface::handleWheelEvent(
 				windowHandle,
 				QPointF(local.x, local.y),
 				QPointF(global.x, global.y),
-				event.delta,
-				event.delta,
+				delta.toPoint(),
+				(delta * kPixelToAngleDelta).toPoint(),
 				LookupModifiers(),
 				phase,
 				Qt::MouseEventSynthesizedBySystem);
@@ -575,12 +605,17 @@ bool WindowHelper::handleNativeEvent(
 					+ GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi)
 				: GetSystemMetrics(SM_CXSIZEFRAME)
 					+ GetSystemMetrics(SM_CXPADDEDBORDER);
+			const auto borderHeight = (GetSystemMetricsForDpiSupported() && dpi)
+				? GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi)
+					+ GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi)
+				: GetSystemMetrics(SM_CYSIZEFRAME)
+					+ GetSystemMetrics(SM_CXPADDEDBORDER);
 			r->left += borderWidth;
 			r->right -= borderWidth;
 			if (maximized) {
-				r->top += borderWidth;
+				r->top += borderHeight;
 			}
-			r->bottom -= borderWidth;
+			r->bottom -= borderHeight;
 		}
 		if (maximized) {
 			const auto hMonitor = MonitorFromWindow(
@@ -871,6 +906,12 @@ void WindowHelper::updateWindowFrameColors(bool active) {
 		kDWMWA_TEXT_COLOR,
 		&fgRef,
 		sizeof(COLORREF));
+}
+
+void WindowHelper::updateCloaking() {
+	const auto enabled = window()->isHidden() && !_isFullScreen;
+	const auto flag = BOOL(enabled ? TRUE : FALSE);
+	DwmSetWindowAttribute(_handle, DWMWA_CLOAK, &flag, sizeof(flag));
 }
 
 void WindowHelper::updateMargins() {
