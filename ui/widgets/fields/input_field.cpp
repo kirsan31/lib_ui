@@ -1921,7 +1921,7 @@ bool InputField::hasText() const {
 	return (from.next() != till);
 }
 
-QString InputField::getTextPart(
+InputField::TextPart InputField::getTextPart(
 		int start,
 		int end,
 		TagList &outTagsList,
@@ -1932,7 +1932,7 @@ QString InputField::getTextPart(
 	if (end >= 0 && end <= start) {
 		outTagsChanged = !outTagsList.isEmpty();
 		outTagsList.clear();
-		return QString();
+		return { QString(), 0 };
 	}
 
 	if (start < 0) {
@@ -1961,6 +1961,7 @@ QString InputField::getTextPart(
 	if (!full && end < 0) {
 		end = possibleLength;
 	}
+	auto textSizeWithoutSurrogatePairsCount = document->characterCount() - 1;
 
 	for (auto block = from; block != till;) {
 		for (auto item = block.begin(); !item.atEnd(); ++item) {
@@ -1987,14 +1988,19 @@ QString InputField::getTextPart(
 				}
 			}
 
-			const auto emojiText = [&] {
+			struct EmojiEntry final {
+				QString text;
+				uint8 surrogatePairs = 0;
+			};
+
+			const auto emojiEntry = [&]() -> EmojiEntry {
 				if (format.isImageFormat()) {
 					const auto imageName = format.toImageFormat().name();
 					if (const auto emoji = Emoji::FromUrl(imageName)) {
-						return emoji->text();
+						return { emoji->text(), emoji->surrogatePairs() };
 					}
 				}
-				return format.property(kCustomEmojiText).toString();
+				return { format.property(kCustomEmojiText).toString(), 0 };
 			}();
 			auto text = [&] {
 				const auto result = fragment.text();
@@ -2024,9 +2030,12 @@ QString InputField::getTextPart(
 					if (ch > begin) {
 						result.append(begin, ch - begin);
 					}
-					adjustedLength += (emojiText.size() - 1);
-					if (!emojiText.isEmpty()) {
-						result.append(emojiText);
+					const auto size = emojiEntry.text.size() - 1;
+					adjustedLength += size;
+					if (!emojiEntry.text.isEmpty()) {
+						result.append(emojiEntry.text);
+						textSizeWithoutSurrogatePairsCount += size
+							- emojiEntry.surrogatePairs;
 					}
 					begin = ch + 1;
 				} break;
@@ -2057,7 +2066,7 @@ QString InputField::getTextPart(
 	markdownTagAccumulator.finish();
 
 	outTagsChanged = tagAccumulator.changed();
-	return result;
+	return { result, textSizeWithoutSurrogatePairsCount };
 }
 
 bool InputField::isUndoAvailable() const {
@@ -2451,7 +2460,7 @@ void InputField::handleContentsChanged() {
 	setErrorShown(false);
 
 	auto tagsChanged = false;
-	const auto currentText = getTextPart(
+	const auto [currentText, currentTextSize] = getTextPart(
 		0,
 		-1,
 		_lastTextWithTags.tags,
@@ -2460,6 +2469,7 @@ void InputField::handleContentsChanged() {
 
 	//highlightMarkdown();
 
+	_lastTextSizeWithoutSurrogatePairsCount = currentTextSize;
 	if (tagsChanged || (_lastTextWithTags.text != currentText)) {
 		_lastTextWithTags.text = currentText;
 		const auto weak = MakeWeak(this);
@@ -2634,7 +2644,7 @@ void InputField::setTextWithTags(
 TextWithTags InputField::getTextWithTagsPart(int start, int end) const {
 	auto changed = false;
 	auto result = TextWithTags();
-	result.text = getTextPart(start, end, result.tags, changed);
+	result.text = getTextPart(start, end, result.tags, changed).text;
 	return result;
 }
 
@@ -2913,10 +2923,10 @@ bool InputField::handleMarkdownKey(QKeyEvent *e) {
 	if (!_markdownEnabled) {
 		return false;
 	}
+	const auto modifiers = e->modifiers()
+		& ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
 	const auto matches = [&](const QKeySequence &sequence) {
-		const auto searchKey = (e->modifiers() | e->key())
-			& ~(Qt::KeypadModifier | Qt::GroupSwitchModifier);
-		const auto events = QKeySequence(searchKey);
+		const auto events = QKeySequence(modifiers | e->key());
 		return sequence.matches(events) == QKeySequence::ExactMatch;
 	};
 	const auto matchesCtrlShiftDot = [&] {
@@ -2924,8 +2934,7 @@ bool InputField::handleMarkdownKey(QKeyEvent *e) {
 		// shift+. gives us '>' and ctrl+shift+> is not the same.
 		// So we check with native code instead.
 #ifdef Q_OS_WIN
-		return e->modifiers().testFlag(Qt::ControlModifier)
-			&& e->modifiers().testFlag(Qt::ShiftModifier)
+		return (modifiers == (Qt::ControlModifier | Qt::ShiftModifier))
 			&& (e->nativeVirtualKey() == VK_OEM_PERIOD);
 #elif !defined DESKTOP_APP_DISABLE_X11_INTEGRATION // Q_OS_WIN
 		if (!_inner->_xcbKeySymbols) {
@@ -2935,8 +2944,7 @@ bool InputField::handleMarkdownKey(QKeyEvent *e) {
 			_inner->_xcbKeySymbols.get(),
 			e->nativeScanCode(),
 			0);
-		return e->modifiers().testFlag(Qt::ControlModifier)
-			&& e->modifiers().testFlag(Qt::ShiftModifier)
+		return (modifiers == (Qt::ControlModifier | Qt::ShiftModifier))
 			&& (keysym == XKB_KEY_period);
 #else // !Q_OS_WIN && !DESKTOP_APP_DISABLE_X11_INTEGRATION
 		return false;
@@ -3980,6 +3988,11 @@ void PrepareFormattingOptimization(not_null<QTextDocument*> document) {
 	if (!document->pageSize().isNull()) {
 		document->setPageSize(QSizeF(0, 0));
 	}
+}
+
+int FieldCharacterCount(not_null<InputField*> field) {
+	// This method counts emoji properly.
+	return field->lastTextSizeWithoutSurrogatePairsCount();
 }
 
 } // namespace Ui
