@@ -92,5 +92,9 @@ inline constexpr auto Upper = details::ToUpperType{};
 	const TextWithEntities &result,
 	const std::vector<EntityType> &types);
 
+[[nodiscard]] QString FixAmpersandInAction(QString text);
+
+[[nodiscard]] TextWithEntities WrapEmailPattern(const QString &);
+
 } // namespace Text
 } // namespace Ui
