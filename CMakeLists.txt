@@ -155,8 +155,12 @@ PRIVATE
     ui/style/style_core_types.h
     ui/style/style_palette_colorizer.cpp
     ui/style/style_palette_colorizer.h
+    ui/text/custom_emoji_helper.cpp
+    ui/text/custom_emoji_helper.h
     ui/text/custom_emoji_instance.cpp
     ui/text/custom_emoji_instance.h
+    ui/text/custom_emoji_text_badge.cpp
+    ui/text/custom_emoji_text_badge.h
     ui/text/text.cpp
     ui/text/text.h
     ui/text/text_bidi_algorithm.h
@@ -296,7 +300,6 @@ PRIVATE
     ui/ph.cpp
     ui/ph.h
     ui/qt_object_factory.h
-    ui/qt_weak_factory.h
     ui/rect.h
     ui/rect_part.h
     ui/round_rect.cpp
