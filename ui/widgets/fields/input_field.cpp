@@ -1561,6 +1561,8 @@ InputField::InputField(
 
 	_placeholderFull.value(
 	) | rpl::start_with_next([=](const QString &text) {
+		accessibilityNameChanged();
+		_inner->setAccessibleName(text);
 		refreshPlaceholder(text);
 	}, lifetime());
 
@@ -2183,6 +2185,14 @@ void InputField::setMinHeight(int height) {
 
 void InputField::setMaxHeight(int height) {
 	_maxHeight = height;
+}
+
+void InputField::setMode(Mode mode) {
+	Expects(_mode == mode // Not supported.
+		|| (_mode != Mode::SingleLine && mode != Mode::SingleLine));
+
+	_mode = mode;
+	forceProcessContentsChanges();
 }
 
 void InputField::insertTag(const QString &text, QString tagId) {
@@ -5378,9 +5388,10 @@ void AddLengthLimitLabel(
 	const auto state = field->lifetime().make_state<State>();
 	state->length = rpl::single(
 		rpl::empty
-	) | rpl::then(field->changes()) | rpl::map([=] {
-		return int(field->getLastText().size());
-	});
+	) | rpl::then(field->changes()) | rpl::map(
+		options.customCharactersCount
+			? options.customCharactersCount
+			: [=] { return int(field->getLastText().size()); });
 	const auto allowExceed = std::max(limit / 2, 9);
 	field->setMaxLength(limit + allowExceed);
 	const auto threshold = options.customThreshold.value_or(
