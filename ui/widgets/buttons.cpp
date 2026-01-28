@@ -142,7 +142,7 @@ void RippleButton::setForceRippled(
 			_forceRippledSubscription = style::PaletteChanged(
 			) | rpl::filter([=] {
 				return _ripple != nullptr;
-			}) | rpl::start_with_next([=] {
+			}) | rpl::on_next([=] {
 				_ripple->forceRepaint();
 			});
 			ensureRipple();
@@ -304,7 +304,7 @@ RoundButton::RoundButton(
 , _roundRect(st.radius ? st.radius : st::buttonRadius, _st.textBg)
 , _roundRectOver(st.radius ? st.radius : st::buttonRadius, _st.textBgOver) {
 	_textFull.value(
-	) | rpl::start_with_next([=](const TextWithEntities &text) {
+	) | rpl::on_next([=](const TextWithEntities &text) {
 		accessibilityNameChanged();
 		resizeToText(text);
 	}, lifetime());
@@ -358,6 +358,11 @@ void RoundButton::setBrushOverride(std::optional<QBrush> brush) {
 	update();
 }
 
+void RoundButton::setRippleOverride(std::optional<QColor> color) {
+	_rippleOverride = std::move(color);
+	update();
+}
+
 void RoundButton::setPenOverride(std::optional<QPen> pen) {
 	_penOverride = std::move(pen);
 	update();
@@ -365,6 +370,11 @@ void RoundButton::setPenOverride(std::optional<QPen> pen) {
 
 void RoundButton::setTextFgOverride(std::optional<QColor> textFg) {
 	_textFgOverride = std::move(textFg);
+	update();
+}
+
+void RoundButton::setIconOverride(const style::icon *icon) {
+	_iconOverride = icon;
 	update();
 }
 
@@ -479,7 +489,7 @@ void RoundButton::paintEvent(QPaintEvent *e) {
 			rect.paint(p, fill);
 		}
 	};
-	if (_penOverride) {
+	if (_penOverride && !_rippleOverride) {
 		paintRipple(p, rounded.topLeft());
 	}
 	drawRect(_roundRect);
@@ -490,8 +500,11 @@ void RoundButton::paintEvent(QPaintEvent *e) {
 		drawRect(_roundRectOver);
 	}
 
-	if (!_penOverride) {
-		paintRipple(p, rounded.topLeft());
+	if (!_penOverride || _rippleOverride) {
+		paintRipple(
+			p,
+			rounded.topLeft(),
+			_rippleOverride ? &*_rippleOverride : nullptr);
 	}
 
 	const auto textTop = _st.padding.top() + _st.textTop;
@@ -532,12 +545,13 @@ void RoundButton::paintEvent(QPaintEvent *e) {
 	}
 	if (_numbers) {
 		textLeft += widthForText + (widthForText ? _st.numbersSkip : 0);
-		p.setFont(_st.style.font);
 		p.setPen((over || down) ? _st.numbersTextFgOver : _st.numbersTextFg);
 		_numbers->paint(p, textLeft, textTop, width());
 	}
 	if (!_st.icon.empty()) {
-		const auto &current = ((over || down) && !_st.iconOver.empty())
+		const auto &current = _iconOverride
+			? *_iconOverride
+			: ((over || down) && !_st.iconOver.empty())
 			? _st.iconOver
 			: _st.icon;
 		current.paint(p, QPoint(iconLeft, iconTop), width());
@@ -812,7 +826,7 @@ SettingsButton::SettingsButton(
 , _context(context) {
 	std::move(
 		text
-	) | rpl::start_with_next([this](TextWithEntities &&value) {
+	) | rpl::on_next([this](TextWithEntities &&value) {
 		setText(std::move(value));
 	}, lifetime());
 }
@@ -851,8 +865,11 @@ SettingsButton *SettingsButton::toggleOn(
 	}
 	std::move(
 		toggled
-	) | rpl::start_with_next([this](bool toggled) {
+	) | rpl::on_next([this](bool toggled) {
 		_toggle->setChecked(toggled, anim::type::normal);
+	}, lifetime());
+	_toggle->checkedChanges() | rpl::on_next([this] {
+		accessibilityStateChanged({ .checked = true });
 	}, lifetime());
 	_toggle->finishAnimating();
 	return this;
@@ -860,6 +877,13 @@ SettingsButton *SettingsButton::toggleOn(
 
 bool SettingsButton::toggled() const {
 	return _toggle ? _toggle->checked() : false;
+}
+
+AccessibilityState SettingsButton::accessibilityState() const {
+	if (!_toggle) {
+		return {};
+	}
+	return { .checkable = true, .checked = _toggle->checked() };
 }
 
 void SettingsButton::setToggleLocked(bool locked) {
@@ -988,7 +1012,7 @@ not_null<RippleButton*> CreateSimpleRectButton(
 		QWidget *parent,
 		const style::RippleAnimation &st) {
 	const auto result = CreateChild<SimpleRippleButton>(parent, st);
-	result->paintRequest() | rpl::start_with_next([result] {
+	result->paintRequest() | rpl::on_next([result] {
 		auto p = QPainter(result);
 		result->paintRipple(p, 0, 0);
 	}, result->lifetime());
@@ -1000,7 +1024,7 @@ not_null<RippleButton*> CreateSimpleSettingsButton(
 		const style::RippleAnimation &st,
 		const style::color &bg) {
 	const auto result = CreateChild<SimpleRippleButton>(parent, st);
-	result->paintRequest() | rpl::start_with_next([result, bg] {
+	result->paintRequest() | rpl::on_next([result, bg] {
 		auto p = QPainter(result);
 		const auto paintOver = (result->isOver() || result->isDown())
 			&& !result->isDisabled();
@@ -1016,7 +1040,7 @@ not_null<RippleButton*> CreateSimpleCircleButton(
 		QWidget *parent,
 		const style::RippleAnimation &st) {
 	const auto result = CreateChild<SimpleCircleButton>(parent, st);
-	result->paintRequest() | rpl::start_with_next([result] {
+	result->paintRequest() | rpl::on_next([result] {
 		auto p = QPainter(result);
 		result->paintRipple(p, 0, 0);
 	}, result->lifetime());
@@ -1027,7 +1051,7 @@ not_null<RippleButton*> CreateSimpleRoundButton(
 		QWidget *parent,
 		const style::RippleAnimation &st) {
 	const auto result = CreateChild<SimpleRoundButton>(parent, st);
-	result->paintRequest() | rpl::start_with_next([result] {
+	result->paintRequest() | rpl::on_next([result] {
 		auto p = QPainter(result);
 		result->paintRipple(p, 0, 0);
 	}, result->lifetime());

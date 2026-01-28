@@ -7,6 +7,7 @@
 #include "ui/accessible/ui_accessible_widget.h"
 
 #include "base/debug_log.h"
+#include "base/integration.h"
 #include "base/screen_reader_state.h"
 #include "base/timer.h"
 #include "ui/rp_widget.h"
@@ -35,7 +36,7 @@ private:
 
 FocusManager::FocusManager() : _cleanupTimer([=] { cleanup(); }) {
 	base::ScreenReaderState::Instance()->activeValue(
-	) | rpl::start_with_next([=](bool active) {
+	) | rpl::on_next([=](bool active) {
 		_active = active;
 		LOG(("Screen Reader: %1").arg(active ? "active" : "inactive"));
 
@@ -94,6 +95,18 @@ QAccessible::State Widget::state() const {
 	auto result = QAccessibleWidget::state();
 	rp()->accessibilityState().writeTo(result);
 	return result;
+}
+
+QStringList Widget::actionNames() const {
+	return QAccessibleWidget::actionNames()
+		+ rp()->accessibilityActionNames();
+}
+
+void Widget::doAction(const QString &actionName) {
+	QAccessibleWidget::doAction(actionName);
+	base::Integration::Instance().enterFromEventLoop([&] {
+		rp()->accessibilityDoAction(actionName);
+	});
 }
 
 QString Widget::text(QAccessible::Text t) const {
