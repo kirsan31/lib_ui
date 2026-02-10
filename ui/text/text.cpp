@@ -771,6 +771,24 @@ void String::setSpoilerLinkFilter(Fn<bool(const ClickContext&)> filter) {
 		std::move(filter));
 }
 
+bool String::hasCustomEmoji() const {
+	return _hasCustomEmoji;
+}
+
+void String::setCustomEmojiClickHandler(
+		Fn<bool(QStringView)> predicate,
+		Fn<void(QStringView, ClickContext)> callback) {
+	if (!_hasCustomEmoji) {
+		return;
+	}
+	const auto extended = ensureExtended();
+	extended->customEmoji = std::make_unique<CustomEmojiData>();
+	const auto data = extended->customEmoji.get();
+	data->predicate = std::move(predicate);
+	data->callback = std::move(callback);
+	data->link = std::make_shared<CustomEmojiClickHandler>(data);
+}
+
 void String::setBlockquoteExpandCallback(
 		Fn<void(int index, bool expanded)> callback) {
 	Expects(_extended && _extended->quotes);

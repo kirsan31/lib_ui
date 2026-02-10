@@ -3720,10 +3720,6 @@ void InputField::customUpDown(bool isCustom) {
 	_customUpDown = isCustom;
 }
 
-void InputField::customTab(bool isCustom) {
-	_customTab = isCustom;
-}
-
 void InputField::setSubmitSettings(SubmitSettings settings) {
 	_submitSettings = settings;
 }
@@ -3994,10 +3990,13 @@ void InputField::keyPressEventInner(QKeyEvent *e) {
 	} else if (key == Qt::Key_Tab || key == Qt::Key_Backtab) {
 		if (alt || ctrl) {
 			e->ignore();
-		} else if (_customTab) {
-			_tabbed.fire({});
-		} else if (!focusNextPrevChild(key == Qt::Key_Tab && !shift)) {
-			e->ignore();
+		} else {
+			auto handled = false;
+			_tabbed.fire(&handled);
+			if (!handled
+				&& !focusNextPrevChild(key == Qt::Key_Tab && !shift)) {
+				e->ignore();
+			}
 		}
 	} else if (key == Qt::Key_Search || e == QKeySequence::Find) {
 		e->ignore();
@@ -5338,7 +5337,7 @@ rpl::producer<bool> InputField::focusedChanges() const {
 	return _focusedChanges.events();
 }
 
-rpl::producer<> InputField::tabbed() const {
+rpl::producer<not_null<bool*>> InputField::tabbed() const {
 	return _tabbed.events();
 }
 
