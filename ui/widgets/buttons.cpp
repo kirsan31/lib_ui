@@ -13,7 +13,9 @@
 #include "ui/text/text_utilities.h"
 #include "ui/widgets/checkbox.h"
 #include "ui/painter.h"
+#include "ui/rect.h"
 #include "ui/qt_object_factory.h"
+#include "ui/round_rect.h"
 
 #include <QtGui/QtEvents>
 
@@ -310,7 +312,7 @@ RoundButton::RoundButton(
 	}, lifetime());
 }
 
-void RoundButton::setTextTransform(TextTransform transform) {
+void RoundButton::setTextTransform(RoundButtonTextTransform transform) {
 	_transform = transform;
 	resizeToText(_textFull.current());
 }
@@ -398,8 +400,17 @@ void RoundButton::setFullRadius(bool enabled) {
 	update();
 }
 
+void RoundButton::setCornerRadii(
+		int topLeft,
+		int topRight,
+		int bottomLeft,
+		int bottomRight) {
+	_cornerRadii = { { topLeft, topRight, bottomLeft, bottomRight } };
+	update();
+}
+
 void RoundButton::resizeToText(const TextWithEntities &text) {
-	if (_transform == TextTransform::ToUpper) {
+	if (_transform == RoundButtonTextTransform::ToUpper) {
 		_text.setMarkedText(
 			_st.style,
 			{ text.text.toUpper(), text.entities },
@@ -479,6 +490,17 @@ void RoundButton::paintEvent(QPaintEvent *e) {
 			p.setPen(_penOverride ? *_penOverride : Qt::NoPen);
 			p.setBrush(_brushOverride ? *_brushOverride : rect.color()->b);
 			p.drawRoundedRect(fill, radius, radius);
+		} else if (_cornerRadii) {
+			auto hq = PainterHighQualityEnabler(p);
+			p.setPen(_penOverride ? *_penOverride : Qt::NoPen);
+			p.setBrush(_brushOverride ? *_brushOverride : rect.color()->b);
+			p.drawPath(
+				ComplexRoundedRectPath(
+					fill,
+					(*_cornerRadii)[0],
+					(*_cornerRadii)[1],
+					(*_cornerRadii)[2],
+					(*_cornerRadii)[3]));
 		} else if (_brushOverride) {
 			PainterHighQualityEnabler hq(p);
 			p.setPen(_penOverride ? *_penOverride : Qt::NoPen);
@@ -564,6 +586,19 @@ QImage RoundButton::prepareRippleMask() const {
 	if (_fullWidthOverride < 0) {
 		rounded = QRect(0, rounded.top(), innerWidth - _fullWidthOverride, rounded.height());
 	}
+	if (_cornerRadii) {
+		const auto &r = *_cornerRadii;
+		return RippleAnimation::MaskByDrawer(rounded.size(), false, [&](
+				QPainter &p) {
+			p.drawPath(
+				ComplexRoundedRectPath(
+					Rect(rounded.size()),
+					r[0],
+					r[1],
+					r[2],
+					r[3]));
+		});
+	}
 	return RippleAnimation::RoundRectMask(
 		rounded.size(),
 		(_fullRadius
@@ -591,6 +626,11 @@ const style::IconButton &IconButton::st() const {
 void IconButton::setIconOverride(const style::icon *iconOverride, const style::icon *iconOverOverride) {
 	_iconOverride = iconOverride;
 	_iconOverrideOver = iconOverOverride;
+	update();
+}
+
+void IconButton::setIconColorOverride(std::optional<QColor> colorOverride) {
+	_iconColorOverride = colorOverride;
 	update();
 }
 
@@ -634,12 +674,20 @@ void IconButton::paintEvent(QPaintEvent *e) {
 	if (position.y() < 0) {
 		position.setY((height() - icon->height()) / 2);
 	}
-	icon->paint(p, position, width());
+	if (_iconColorOverride) {
+		icon->paint(p, position, width(), *_iconColorOverride);
+	} else {
+		icon->paint(p, position, width());
+	}
 	if (overIconOpacity > 0. && overIconOpacity < 1.) {
 		const auto iconOver = overIcon();
 		if (iconOver != icon) {
 			p.setOpacity(overIconOpacity);
-			iconOver->paint(p, position, width());
+			if (_iconColorOverride) {
+				iconOver->paint(p, position, width(), *_iconColorOverride);
+			} else {
+				iconOver->paint(p, position, width());
+			}
 		}
 	}
 }

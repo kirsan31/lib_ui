@@ -20,6 +20,10 @@ class ItemBase : public RippleButton {
 public:
 	ItemBase(not_null<Menu*> parent, const style::Menu &st);
 
+	Qt::FocusPolicy accessibilityFocusPolicy() override {
+		return Qt::ClickFocus;
+	}
+
 	TriggeredSource lastTriggeredSource() const;
 
 	rpl::producer<CallbackData> selects() const;
@@ -61,6 +65,8 @@ protected:
 
 	virtual int contentHeight() const = 0;
 
+	void keyPressEvent(QKeyEvent *e) override;
+	void keyReleaseEvent(QKeyEvent *e) override;
 	void mousePressEvent(QMouseEvent *e) override;
 	void mouseMoveEvent(QMouseEvent *e) override;
 	void mouseReleaseEvent(QMouseEvent *e) override;

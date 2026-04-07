@@ -93,16 +93,23 @@ using CustomEmojiFactory = Fn<std::unique_ptr<CustomEmoji>(
 	QStringView,
 	const MarkedContext &)>;
 
+struct FormattedDateResult {
+	QString text;
+	int32 nextUpdate = 0;
+};
+using FormattedDateFactory = Fn<FormattedDateResult(int32 date, FormattedDateFlags flags)>;
+
 struct MarkedContext {
 	Fn<void()> repaint;
 	CustomEmojiFactory customEmojiFactory;
+	FormattedDateFactory formattedDateFactory;
 	std::any other;
 };
 
 struct Modification {
 	int position = 0;
 	uint16 skipped = 0;
-	bool added = false;
+	uint16 added = 0;
 };
 
 struct StateRequest {
@@ -163,6 +170,12 @@ struct LineGeometry {
 	int left = 0;
 	int width = 0;
 	bool elided = false;
+};
+struct LineLayoutInfo {
+	int top = 0;
+	int left = 0;
+	int width = 0;
+	bool rtl = false;
 };
 struct GeometryDescriptor {
 	Fn<LineGeometry(int line)> layout;
@@ -289,6 +302,8 @@ public:
 	[[nodiscard]] std::vector<int> countLineWidths(
 		int width,
 		LineWidthsOptions options) const;
+	[[nodiscard]] std::vector<LineLayoutInfo> countLinesGeometry(
+		int width) const;
 
 	struct DimensionsResult {
 		int width = 0;
@@ -396,12 +411,16 @@ public:
 
 	[[nodiscard]] bool hasNotEmojiAndSpaces() const;
 	[[nodiscard]] const std::vector<Modification> &modifications() const;
+	[[nodiscard]] int32 nextFormattedDateUpdate() const;
 
 	[[nodiscard]] const style::TextStyle *style() const {
 		return _st;
 	}
 
 	[[nodiscard]] int lineHeight() const;
+
+	[[nodiscard]] TextSelection linkRangeFor(
+		const ClickHandlerPtr &link) const;
 
 	void clear();
 
@@ -463,8 +482,8 @@ private:
 		FlagsChangeCallback flagsChangeCallback) const;
 
 	// Template method for countWidth(), countHeight(), countLineWidths().
-	// callback(lineWidth, lineBottom) will be called for all lines with:
-	// QFixed lineWidth, int lineBottom
+	// callback(lineWidth, lineBottom, lineLeft) will be called for all lines
+	// with: QFixed lineWidth, int lineBottom, int lineLeft
 	template <typename Callback>
 	void enumerateLines(
 		int w,
@@ -476,6 +495,7 @@ private:
 		Callback &&callback) const;
 
 	void insertModifications(int position, int delta);
+	void insertReplacement(int position, int skipped, int added);
 	void removeModificationsAfter(int size);
 	void recountNaturalSize(
 		bool initial,

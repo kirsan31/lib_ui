@@ -28,6 +28,11 @@ void ItemBase::setSelected(
 		_lastTriggeredSource = source;
 		_selected = selected;
 		update();
+		if (selected && focusPolicy() != Qt::NoFocus) {
+			setFocus();
+			QAccessibleEvent event(this, QAccessible::Focus);
+			QAccessible::updateAccessibility(&event);
+		}
 	}
 }
 
@@ -150,6 +155,14 @@ void ItemBase::setActionTriggered(Fn<void()> callback) {
 	} else {
 		_connection.reset();
 	}
+}
+
+void ItemBase::keyPressEvent(QKeyEvent *e) {
+	e->ignore();
+}
+
+void ItemBase::keyReleaseEvent(QKeyEvent *e) {
+	e->ignore();
 }
 
 void ItemBase::mousePressEvent(QMouseEvent *e) {
