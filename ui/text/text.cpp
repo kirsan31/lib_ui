@@ -1853,7 +1853,7 @@ TextForMimeData String::toText(
 				entity.type,
 				linkStart,
 				int(result.rich.text.size() - linkStart),
-				plainUrl ? QString() : entity.data });
+				entity.data });
 		}
 	};
 	const auto appendPartCallback = [&](
@@ -1993,6 +1993,13 @@ bool IsWordSeparator(QChar ch) {
 	case '`':
 	case '~':
 	case '|':
+	case 0x2013: // en dash
+	case 0x2014: // em dash
+	case 0x2018: // left single quotation mark
+	case 0x2019: // right single quotation mark
+	case 0x201C: // left double quotation mark
+	case 0x201D: // right double quotation mark
+	case 0x2026: // horizontal ellipsis
 		return true;
 	default:
 		break;
