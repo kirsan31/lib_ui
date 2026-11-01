@@ -25,6 +25,7 @@
 #include "ui/painter.h"
 #include "ui/qt_object_factory.h"
 #include "ui/integration.h"
+#include "ui/screen_reader_mode.h"
 #include "styles/style_widgets.h"
 #include "styles/palette.h"
 
@@ -1643,6 +1644,7 @@ private:
 
 };
 
+#ifndef QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 // The mark under a misspelled word, drawn the way Chrome draws it - a wave on
 // Windows and on Linux, a row of dots on macOS. Kept in the cache of pixmaps
 // as one period of it, so that a run of any length is a filled rectangle.
@@ -1669,8 +1671,10 @@ private:
 
 		const auto height = kMarkerHeight * factor;
 		const auto width = height + 1;
-		result = QPixmap(
-			(QSizeF(qCeil(width), qFloor(height)) * ratio).toSize());
+		const auto size = QSizeF(
+			int(std::ceil(width)),
+			int(std::floor(height)));
+		result = QPixmap((size * ratio).toSize());
 		result.setDevicePixelRatio(ratio);
 		result.fill(Qt::transparent);
 		{
@@ -1679,7 +1683,8 @@ private:
 			p.setBrush(color);
 			p.setRenderHints(
 				QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
-			p.drawEllipse(0, 0, qFloor(height), qFloor(height));
+			const auto side = int(std::floor(height));
+			p.drawEllipse(0, 0, side, side);
 		}
 		return result;
 	}
@@ -1722,6 +1727,7 @@ private:
 
 	return result;
 }
+#endif // !QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 
 void InsertEmojiAtCursor(QTextCursor cursor, EmojiPtr emoji) {
 	const auto currentFormat = cursor.charFormat();
@@ -1906,7 +1912,7 @@ InputField::InputField(
 
 		if (_mode != Mode::SingleLine) {
 			const auto metrics = QFontMetricsF(_st.style.font->f);
-			const auto leading = qMax(metrics.leading(), qreal(0.0));
+			const auto leading = std::max(metrics.leading(), qreal(0.0));
 			const auto adjustment = (metrics.ascent() + leading)
 				- ((_st.style.font->height * 4) / 5);
 			_placeholderCustomFontSkip = int(base::SafeRound(-adjustment));
@@ -2144,12 +2150,25 @@ bool InputField::viewportEventInner(QEvent *e) {
 	return _inner->QTextEdit::viewportEvent(e);
 }
 
-void InputField::updatePalette() {
+void InputField::applyPaletteColors(bool onlyIfChanged) {
+	const auto text = _st.textFg->c;
+	const auto highlight = st::msgInBgSelected->c;
+	const auto highlighted = st::historyTextInFgSelected->c;
 	auto p = _inner->palette();
-	p.setColor(QPalette::Text, _st.textFg->c);
-	p.setColor(QPalette::Highlight, st::msgInBgSelected->c);
-	p.setColor(QPalette::HighlightedText, st::historyTextInFgSelected->c);
+	if (onlyIfChanged
+		&& p.color(QPalette::Text) == text
+		&& p.color(QPalette::Highlight) == highlight
+		&& p.color(QPalette::HighlightedText) == highlighted) {
+		return;
+	}
+	p.setColor(QPalette::Text, text);
+	p.setColor(QPalette::Highlight, highlight);
+	p.setColor(QPalette::HighlightedText, highlighted);
 	_inner->setPalette(p);
+}
+
+void InputField::updatePalette() {
+	applyPaletteColors(false);
 
 	_defaultCharFormat.merge(PrepareTagFormat(
 		_st,
@@ -2316,12 +2335,16 @@ void InputField::customEmojiRepaint() {
 }
 
 void InputField::paintEventInner(QPaintEvent *e) {
+	applyPaletteColors(true);
 	_customEmojiRepaintScheduled = false;
 	paintQuotes(e);
 	_inner->QTextEdit::paintEvent(e);
+#ifndef QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 	paintMisspelled(e);
+#endif // !QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 }
 
+#ifndef QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 void InputField::paintMisspelled(QPaintEvent *e) {
 	const auto clip = e->rect();
 	const auto ratio = _inner->viewport()->devicePixelRatioF();
@@ -2408,6 +2431,7 @@ void InputField::paintMisspelled(QPaintEvent *e) {
 		}
 	}
 }
+#endif // !QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 
 void InputField::paintQuotes(QPaintEvent *e) {
 	if (!_blockquoteCache || !_preCache) {
@@ -2882,8 +2906,12 @@ void InputField::paintFlatSurrounding(
 	const auto borderOpacity = _a_borderOpacity.value(_borderVisible ? 1. : 0.);
 	if (_st.borderActive && (borderOpacity > 0.)) {
 		auto borderStart = std::clamp(_borderAnimationStart, 0, width());
-		auto borderFrom = qRound(borderStart * (1. - borderShownDegree));
-		auto borderTo = borderStart + qRound((width() - borderStart) * borderShownDegree);
+		auto borderFrom
+			= int(base::SafeRound(borderStart * (1. - borderShownDegree)));
+		const auto borderRest = width() - borderStart;
+		const auto shownTo
+			= int(base::SafeRound(borderRest * borderShownDegree));
+		auto borderTo = borderStart + shownTo;
 		if (borderTo > borderFrom) {
 			auto borderFg = anim::brush(_st.borderFgActive, _st.borderFgError, errorDegree);
 			p.setOpacity(borderOpacity);
@@ -2909,9 +2937,10 @@ void InputField::paintEvent(QPaintEvent *e) {
 		p.setClipRect(r);
 
 		auto placeholderTop = anim::interpolate(0, _st.placeholderShift, placeholderShiftDegree);
+		auto placeholderLeft = anim::interpolate(0, _st.placeholderShiftLeft, placeholderShiftDegree);
 
 		QRect r(rect().marginsRemoved(margins));
-		r.moveTop(r.top() + placeholderTop);
+		r.translate(placeholderLeft, placeholderTop);
 		if (style::RightToLeft()) r.moveLeft(width() - r.left() - r.width());
 
 		auto placeholderScale = 1. - (1. - _st.placeholderScale) * placeholderShiftDegree;
@@ -3679,7 +3708,7 @@ void InputField::processFormatting(int insertPosition, int insertEnd) {
 					}
 				}
 
-				auto *ch = textStart + qMax(changedPositionInFragment, 0);
+				auto *ch = textStart + std::max(changedPositionInFragment, 0);
 				for (; ch < textEnd; ++ch) {
 					const auto removeNewline = (_mode != Mode::MultiLine)
 						&& IsNewline(*ch);
@@ -4248,6 +4277,8 @@ void InputField::setTextWithTags(
 	_insertedTagsAreFromMime = false;
 	_realInsertPosition = 0;
 	_realCharsAdded = prepared.text.size();
+	// The whole text is replaced, so old block formats (quotes) must not survive.
+	_insertedTagsReplace = true;
 	const auto document = _inner->document();
 	auto cursor = QTextCursor(document);
 	if (historyAction == HistoryAction::Clear) {
@@ -4269,6 +4300,7 @@ void InputField::setTextWithTags(
 	if (historyAction == HistoryAction::Clear) {
 		document->setUndoRedoEnabled(true);
 	}
+	_insertedTagsReplace = false;
 	_insertedTags.clear();
 	_realInsertPosition = -1;
 	finishAnimating();
@@ -4504,7 +4536,10 @@ void InputField::keyPressEventInner(QKeyEvent *e) {
 			e->ignore();
 		} else {
 			const auto forward = (key == Qt::Key_Tab) && !shift;
-			auto request = TabbedRequest{ .backward = !forward };
+			auto request = TabbedRequest{
+				.backward = !forward,
+				.defaultOrder = ScreenReaderModeActive(),
+			};
 			_tabbed.fire(&request);
 			if (!request.handled && !focusNextPrevChild(forward)) {
 				e->ignore();

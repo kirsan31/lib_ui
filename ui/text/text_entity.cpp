@@ -59,6 +59,9 @@ struct ParsedLinkTag {
 };
 
 [[nodiscard]] ParsedLinkTag ParseLinkTag(QStringView tag) {
+	if (tag.trimmed().startsWith(u"internal:"_q, Qt::CaseInsensitive)) {
+		return {};
+	}
 	if (IsMentionLink(tag)) {
 		const auto data = MentionEntityData(tag);
 		return data.isEmpty()
@@ -1680,7 +1683,11 @@ void ParseEntities(TextWithEntities &result, int32 flags) {
 		auto mDomain = qthelp::RegExpDomain().match(result.text, matchOffset);
 		auto mExplicitDomain = qthelp::RegExpDomainExplicit().match(result.text, matchOffset);
 		auto mHashtag = withHashtags ? RegExpHashtag(true).match(result.text, matchOffset) : QRegularExpressionMatch();
-		auto mMention = withMentions ? RegExpMention().match(result.text, qMax(mentionSkip, matchOffset)) : QRegularExpressionMatch();
+		auto mMention = withMentions
+			? RegExpMention().match(
+				result.text,
+				std::max(mentionSkip, matchOffset))
+			: QRegularExpressionMatch();
 		auto mBotCommand = withBotCommands ? RegExpBotCommand().match(result.text, matchOffset) : QRegularExpressionMatch();
 
 		auto lnkType = EntityType::Url;
@@ -1725,7 +1732,9 @@ void ParseEntities(TextWithEntities &result, int32 flags) {
 					&& (start + mentionSkip)->isLowSurrogate()) {
 					++mentionSkip;
 				}
-				mMention = RegExpMention().match(result.text, qMax(mentionSkip, matchOffset));
+				mMention = RegExpMention().match(
+					result.text,
+					std::max(mentionSkip, matchOffset));
 				if (mMention.hasMatch()) {
 					mentionStart = mMention.capturedStart();
 					mentionEnd = mMention.capturedEnd();
@@ -2624,4 +2633,38 @@ std::pair<int32, FormattedDateFlags> DeserializeFormattedDateData(
 	const auto flags = FormattedDateFlags::from_raw(
 		uint8(parts[1].toUInt()));
 	return std::pair(date, flags);
+}
+
+bool EntityReplacesText(const EntityInText &entity) {
+	const auto type = entity.type();
+	return (type == EntityType::CustomEmoji)
+		|| ((type == EntityType::FormattedDate)
+			&& (DeserializeFormattedDateData(entity.data()).second
+				!= FormattedDateFlags()));
+}
+
+void ReplacedTextRanges::add(int from, int till) {
+	if (from < till) {
+		_ranges.push_back({ .from = from, .till = till });
+	}
+}
+
+void ReplacedTextRanges::prepare() {
+	ranges::sort(_ranges, ranges::less(), &Range::from);
+	auto till = 0;
+	for (auto &range : _ranges) {
+		range.till = till = std::max(till, range.till);
+	}
+}
+
+bool ReplacedTextRanges::overlaps(int from, int till) const {
+	if (from >= till) {
+		return false;
+	}
+	const auto i = ranges::lower_bound(
+		_ranges,
+		till,
+		ranges::less(),
+		&Range::from);
+	return (i != _ranges.begin()) && ((i - 1)->till > from);
 }

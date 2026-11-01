@@ -100,6 +100,7 @@ RoundButton {
 	width: pixels;
 	height: pixels;
 	radius: pixels;
+	fullRadius: bool;
 	padding: margins;
 
 	textTop: pixels;
@@ -307,6 +308,7 @@ InputField {
 	placeholderAlign: align;
 	placeholderScale: double;
 	placeholderShift: pixels;
+	placeholderShiftLeft: pixels;
 	placeholderFont: font;
 
 	duration: int;

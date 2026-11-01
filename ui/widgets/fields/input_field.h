@@ -153,6 +153,14 @@ public:
 	struct TabbedRequest {
 		bool backward = false;
 		bool handled = false;
+
+		// Set when Tab should follow the default focus order instead: in
+		// screen reader mode the buttons and settings around the fields
+		// are Tab stops, and a handler that would only pass the focus on
+		// to another field is expected to leave the request alone. One
+		// that uses Tab for something else - accepting a suggestion -
+		// goes ahead as usual.
+		bool defaultOrder = false;
 	};
 	static const QString kTagBold;
 	static const QString kTagItalic;
@@ -282,6 +290,7 @@ public:
 	using ContextMenuHook = Fn<void(ContextMenuRequest)>;
 
 	void setPlaceholderColorOverride(const style::color &color);
+	void updatePalette();
 
 	void setDocumentMargin(float64 margin);
 	void setAdditionalMargin(int margin);
@@ -461,7 +470,7 @@ private:
 	void updateRootFrameFormat();
 	bool viewportEventInner(QEvent *e);
 
-	void updatePalette();
+	void applyPaletteColors(bool onlyIfChanged);
 	void refreshPlaceholder(const QString &text);
 	int placeholderSkipWidth() const;
 	[[nodiscard]] QMargins placeholderPaintMargins() const;
@@ -486,7 +495,9 @@ private:
 	void updateInnerInputMethodHints();
 	void paintEventInner(QPaintEvent *e);
 	void paintQuotes(QPaintEvent *e);
+#ifndef QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 	void paintMisspelled(QPaintEvent *e);
+#endif // !QT_SPELLCHECK_UNDERLINE_FROM_CHROME
 
 	void mousePressEventInner(QMouseEvent *e);
 	void mouseReleaseEventInner(QMouseEvent *e);
